@@ -89,9 +89,7 @@ pub fn listen_for_requests(context: &eframe::CreationContext<'_>) {
         let _ = REPAINT.set(context.egui_ctx.clone());
         // The subclass lives on the main window's own thread and owns no borrowed data.
         let window = window.hwnd.get() as HWND;
-        if unsafe { SetWindowSubclass(window, Some(window_proc), SUBCLASS_ID, 0) } != 0 {
-            crate::window_frame::apply(window);
-        }
+        unsafe { SetWindowSubclass(window, Some(window_proc), SUBCLASS_ID, 0) };
     }
 }
 
@@ -116,11 +114,6 @@ unsafe extern "system" fn window_proc(
     _: usize,
     _: usize,
 ) -> LRESULT {
-    if let Some(result) =
-        unsafe { crate::window_frame::window_message(window, message, wparam, lparam) }
-    {
-        return result;
-    }
     if message == shutdown_message() {
         SHUTDOWN_REQUESTED.store(true, Relaxed);
         if let Some(ctx) = REPAINT.get() {

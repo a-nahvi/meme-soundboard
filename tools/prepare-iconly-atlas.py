@@ -36,9 +36,6 @@ SELECTION = [
     ("REFRESH", "A", 3225),
     ("EXTERNAL_LINK", "A", 1990),
     ("CHECK", "S", 801),
-    ("MINIMIZE", "S", 10957),
-    ("MAXIMIZE", "S", 13622),
-    ("RESTORE", "S", 25504),
 ]
 
 SIDE = 40

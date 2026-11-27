@@ -35,7 +35,4 @@ impl Icon {
     pub const REFRESH: Self = Self::new(1283, 76); // Iconly animations/3225
     pub const EXTERNAL_LINK: Self = Self::new(1359, 75); // Iconly animations/1990
     pub const CHECK: Self = Self::new(1434, 1); // Iconly icons/801
-    pub const MINIMIZE: Self = Self::new(1435, 1); // Iconly icons/10957
-    pub const MAXIMIZE: Self = Self::new(1436, 1); // Iconly icons/13622
-    pub const RESTORE: Self = Self::new(1437, 1); // Iconly icons/25504
 }

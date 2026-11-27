@@ -5,11 +5,11 @@ mod settings;
 mod shortcut_dialog;
 mod trim;
 mod updates;
-mod window_frame;
 
 use crate::{
     audio::{self, ClipProgress, Devices, Engine, Route, Source},
     folder::{FolderSync, Snapshot},
+    native_caption::Caption,
     shortcuts::{self, Action, Shortcuts},
     storage::{AUDIO_EXTENSIONS, Clip, ClipTrim, LIBRARY_FILE, Settings, Store, file_key},
     tray::{self, Tray},
@@ -138,6 +138,7 @@ pub struct App {
     page: Page,
     animate: bool,
     logo: egui::TextureHandle,
+    caption: Caption,
     tray: Tray,
     hide_on_first_frame: bool,
     quitting: bool,
@@ -163,7 +164,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(ctx: &egui::Context, store: Store, background: bool) -> Result<Self> {
+    pub fn new(
+        context: &eframe::CreationContext<'_>,
+        store: Store,
+        background: bool,
+    ) -> Result<Self> {
+        let ctx = &context.egui_ctx;
         let mut settings: Settings = store.read(SETTINGS_FILE)?;
         let clips = store.read_library()?;
         let wake = ctx.clone();
@@ -207,6 +213,7 @@ impl App {
             page: Page::Library,
             animate,
             logo,
+            caption: Caption::new(context),
             tray,
             hide_on_first_frame: background && tray_error.is_none(),
             quitting: false,
@@ -1171,10 +1178,11 @@ impl eframe::App for App {
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
-        self.window_frame(ui);
+        let p = design::palette(ui);
+        self.caption
+            .apply(ui.visuals().dark_mode, p.card, p.card_foreground);
         self.navigation(ui);
         self.transport(ui);
-        let p = design::palette(ui);
         egui::CentralPanel::default()
             .frame(
                 Frame::new()

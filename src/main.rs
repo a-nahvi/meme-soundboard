@@ -2,13 +2,13 @@
 
 mod audio;
 mod folder;
+mod native_caption;
 mod releases;
 mod shortcuts;
 mod storage;
 mod tray;
 mod ui;
 mod update;
-mod window_frame;
 
 use anyhow::{Context, Result};
 use eframe::egui;
@@ -79,7 +79,7 @@ fn run(background: bool) -> Result<()> {
         options,
         Box::new(move |context| {
             update::listen_for_requests(context);
-            let app = ui::App::new(&context.egui_ctx, store, background)?;
+            let app = ui::App::new(context, store, background)?;
             set_taskbar_icon(context);
             Ok(Box::new(app))
         }),
