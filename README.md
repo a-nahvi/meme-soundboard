@@ -31,7 +31,7 @@ Run the new setup over the existing installation. Setup closes the copy running 
 
 Deliver **dist/MemeSoundboard-Setup-x64.exe** with every release. Keep the existing Inno Setup app ID and previous-directory detection so Setup can upgrade the installed copy. Before handing off the installer, verify that it closes a running previous version, updates it in its existing folder, and preserves the data folder.
 
-Open **Updates** from the sidebar to see your installed version and check for new stable releases. In-app checking and downloading use an installed GitHub CLI signed in with access to the private repository. You can also select **Open GitHub releases** and use your existing browser sign-in. Soundboard verifies the GitHub asset's size and SHA-256 digest before opening Setup in your existing installation folder.
+Open **Updates** from the sidebar to see your installed version and check for new stable releases. Sign in to Git for Windows or GitHub CLI with an account that can read the private repository. Soundboard reuses those GitHub credentials for the release request. You can also select **Open GitHub releases** and use your browser sign-in. Soundboard verifies the GitHub asset's size and SHA-256 digest before opening Setup in your existing installation folder.
 
 Build from a checkout whose `origin` points to the GitHub repository. To configure a build from a source archive, set `MEME_SOUNDBOARD_GITHUB_REPOSITORY` to the `owner/repository` slug before building. Release stable versions with a `v`-prefixed version tag and attach `dist/MemeSoundboard-Setup-x64.exe` to the GitHub Release. The update checker ignores prereleases.
 

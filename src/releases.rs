@@ -5,8 +5,8 @@ use std::{
     env,
     ffi::OsString,
     fs::{self, File, OpenOptions},
-    io::Read,
-    os::windows::process::CommandExt,
+    io::{Read, Write},
+    os::windows::{ffi::OsStringExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     ptr::{null, null_mut},
@@ -17,7 +17,7 @@ use windows_sys::Win32::{
         BCRYPT_HASH_HANDLE, BCRYPT_SHA256_ALG_HANDLE, BCryptCreateHash, BCryptDestroyHash,
         BCryptFinishHash, BCryptHashData,
     },
-    System::Threading::CREATE_NO_WINDOW,
+    System::{SystemInformation::GetSystemDirectoryW, Threading::CREATE_NO_WINDOW},
 };
 
 const INSTALLER: &str = "MemeSoundboard-Setup-x64.exe";
@@ -50,15 +50,13 @@ pub struct AvailableUpdate {
 
 pub fn check(repository: &str) -> Result<Option<AvailableUpdate>> {
     let endpoint = format!("repos/{repository}/releases/latest");
-    let output = api()?
-        .arg(endpoint)
-        .output()
-        .context("Can't start GitHub CLI.")?;
-    if !output.status.success() {
-        api_error(&output.stderr)?;
-    }
-    let release =
-        serde_json::from_slice(&output.stdout).context("Can't read the GitHub release.")?;
+    let response = request(
+        &endpoint,
+        "application/vnd.github+json",
+        Stdio::piped(),
+        2_097_152,
+    )?;
+    let release = serde_json::from_slice(&response).context("Can't read the GitHub release.")?;
     update_from_release(release, &Version::parse(INSTALLED_VERSION)?)
 }
 
@@ -106,7 +104,6 @@ pub fn download_and_install(repository: &str, update: &AvailableUpdate, data: &P
     let installer = directory.join(INSTALLER);
     if !installer_matches(&installer, update) {
         let endpoint = format!("repos/{repository}/releases/assets/{}", update.asset_id);
-        let mut command = api()?;
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
         let staging = directory.join(format!("download-{nonce}.part"));
         let file = OpenOptions::new()
@@ -115,15 +112,12 @@ pub fn download_and_install(repository: &str, update: &AvailableUpdate, data: &P
             .open(&staging)
             .context("Can't create the installer download file.")?;
         let downloaded = (|| {
-            let output = command
-                .args(["-H", "Accept: application/octet-stream"])
-                .arg(endpoint)
-                .stdout(Stdio::from(file))
-                .output()
-                .context("Can't download the installer from GitHub.")?;
-            if !output.status.success() {
-                api_error(&output.stderr)?;
-            }
+            request(
+                &endpoint,
+                "application/octet-stream",
+                Stdio::from(file),
+                update.size,
+            )?;
             ensure!(
                 installer_matches(&staging, update),
                 "The installer did not match the GitHub release digest."
@@ -206,34 +200,163 @@ fn sha256(mut source: impl Read) -> Result<(u64, String)> {
     Ok((length, digest))
 }
 
-fn api() -> Result<Command> {
-    let path = env::var_os("PATH").unwrap_or_default();
-    let cli = env::split_paths(&path)
-        .filter(|directory| directory.is_absolute())
-        .map(|directory| directory.join("gh.exe"))
-        .chain(env::var_os("ProgramFiles").map(|programs| PathBuf::from(programs).join("GitHub CLI/gh.exe")))
-        .find(|exe| exe.is_file())
-        .context("To check in Soundboard, install GitHub CLI and sign in. You can also open Releases in your browser.")?;
-    let mut command = Command::new(cli);
-    command
-        .args(["api", "--hostname", "github.com"])
-        .env("GH_PROMPT_DISABLED", "1")
-        .env("GH_NO_UPDATE_NOTIFIER", "1")
-        .env_remove("GH_DEBUG")
-        .env_remove("GH_REPO")
-        .creation_flags(CREATE_NO_WINDOW);
-    Ok(command)
+fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Vec<u8>> {
+    let token = github_token().context(
+        "Sign in to Git for Windows or GitHub CLI with access to this repository. You can also open Releases in your browser.",
+    )?;
+    let token = token.trim();
+    ensure!(
+        token.bytes().all(|byte| byte.is_ascii_graphic()),
+        "The stored GitHub credential is invalid."
+    );
+    let curl = system_curl().context("Can't locate Windows' GitHub download helper.")?;
+    // curl drops Authorization when a release asset redirects to another origin.
+    // Read that header from a pipe so the token is absent from the command line.
+    let mut child = Command::new(curl)
+        .args([
+            "--disable",
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--location",
+            "--max-redirs",
+            "5",
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "120",
+            "--user-agent",
+            concat!("Meme-Soundboard/", env!("CARGO_PKG_VERSION")),
+            "--header",
+            "@-",
+            "--header",
+            "X-GitHub-Api-Version: 2026-03-10",
+            "--write-out",
+            "%{stderr}%{http_code}\n",
+        ])
+        .arg("--header")
+        .arg(format!("Accept: {accept}"))
+        .arg("--max-filesize")
+        .arg(limit.to_string())
+        .arg(format!("https://api.github.com/{endpoint}"))
+        .stdin(Stdio::piped())
+        .stdout(output)
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .context("Can't start the GitHub connection.")?;
+    let header_sent = child
+        .stdin
+        .take()
+        .context("Can't send GitHub authentication.")?
+        .write_all(format!("Authorization: Bearer {token}\n").as_bytes());
+    let response = child
+        .wait_with_output()
+        .context("Can't read the GitHub response.")?;
+    let errors = String::from_utf8_lossy(&response.stderr);
+    let code = errors
+        .lines()
+        .find_map(|line| line.trim().parse::<u16>().ok());
+    match code {
+        Some(200..=299) if response.status.success() => {
+            header_sent.context("Can't send GitHub authentication.")?;
+            Ok(response.stdout)
+        }
+        Some(401 | 403) => {
+            bail!("Sign in to GitHub with an account that can read the private repository.")
+        }
+        Some(404) => {
+            bail!("GitHub could not find a release you can access. Open Releases in your browser.")
+        }
+        _ => bail!(
+            "Can't reach the GitHub release. Check your connection or open Releases in your browser."
+        ),
+    }
 }
 
-fn api_error(stderr: &[u8]) -> Result<()> {
-    let error = String::from_utf8_lossy(stderr);
-    if error.contains("gh auth login") || error.contains("HTTP 401") || error.contains("HTTP 403") {
-        bail!("Sign in with GitHub CLI using an account that can read the private repository.");
+fn system_curl() -> Option<PathBuf> {
+    let mut buffer = [0; 260];
+    // The Windows 11 inbox curl executable lives in the system directory.
+    let length = unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) } as usize;
+    if length == 0 || length >= buffer.len() {
+        return None;
     }
-    if error.contains("HTTP 404") {
-        bail!("GitHub could not find a release you can access. Open Releases in your browser.");
+    let path = PathBuf::from(OsString::from_wide(&buffer[..length])).join("curl.exe");
+    path.is_file().then_some(path)
+}
+
+fn github_token() -> Option<String> {
+    ["GH_TOKEN", "GITHUB_TOKEN"]
+        .into_iter()
+        .filter_map(|name| env::var(name).ok())
+        .find(|token| !token.trim().is_empty())
+        .or_else(cli_token)
+        .or_else(git_token)
+}
+
+fn executable(name: &str, program_path: &str) -> Option<PathBuf> {
+    env::split_paths(&env::var_os("PATH").unwrap_or_default())
+        .filter(|directory| directory.is_absolute())
+        .map(|directory| directory.join(name))
+        .chain(
+            env::var_os("ProgramFiles").map(|programs| PathBuf::from(programs).join(program_path)),
+        )
+        .find(|exe| exe.is_file())
+}
+
+fn cli_token() -> Option<String> {
+    let cli = executable("gh.exe", "GitHub CLI/gh.exe")?;
+    let output = Command::new(cli)
+        .args(["auth", "token", "--hostname", "github.com"])
+        .env("GH_PROMPT_DISABLED", "1")
+        .env_remove("GH_DEBUG")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
     }
-    bail!("Can't reach the GitHub release. Check your connection or open Releases in your browser.")
+    let token = String::from_utf8(output.stdout).ok()?;
+    let token = token.trim();
+    (!token.is_empty()).then(|| token.to_owned())
+}
+
+fn git_token() -> Option<String> {
+    let git = executable("git.exe", "Git/cmd/git.exe")?;
+    let mut child = Command::new(git)
+        .args(["-c", "credential.interactive=false", "credential", "fill"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "Never")
+        .env_remove("GIT_TRACE")
+        .env_remove("GIT_TRACE_CURL")
+        .env_remove("GCM_TRACE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .ok()?;
+    let input_ok = child
+        .stdin
+        .take()?
+        .write_all(b"protocol=https\nhost=github.com\n\n")
+        .is_ok();
+    let output = child.wait_with_output().ok()?;
+    if !input_ok || !output.status.success() {
+        return None;
+    }
+    let record = String::from_utf8(output.stdout).ok()?;
+    record.lines().find_map(|line| {
+        line.strip_prefix("password=")
+            .filter(|token| !token.is_empty())
+            .map(str::to_owned)
+    })
 }
 
 #[cfg(test)]
