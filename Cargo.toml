@@ -1,0 +1,30 @@
+[package]
+name = "meme-soundboard"
+version = "0.4.3"
+edition = "2024"
+description = "A Windows soundboard that mixes clips into your voice chat"
+
+[build-dependencies]
+embed-resource = "3.0"
+
+[dependencies]
+anyhow = "1"
+cpal = "0.18.2"
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+global-hotkey = "0.7"
+notify = { version = "8.2", default-features = false }
+raw-window-handle = "0.6"
+rfd = { version = "0.15", default-features = false }
+rtrb = "0.3"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shadcn-egui = "0.8"
+symphonia = { version = "0.5", default-features = false, features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
+tray-icon = { version = "0.24.2", default-features = false }
+windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_LibraryLoader", "Win32_System_RemoteDesktop", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "debuginfo"
