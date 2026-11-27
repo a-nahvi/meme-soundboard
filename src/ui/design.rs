@@ -1,17 +1,18 @@
+use super::icons::{self, Icon};
 use crate::{audio::ClipProgress, storage::Appearance};
 use eframe::egui::{
-    self, Align, Color32, FontDefinitions, FontFamily, FontId, Frame, Label, Layout, RichText,
-    Stroke, Ui, Vec2,
+    self, Align, Color32, FontDefinitions, FontFamily, FontId, Frame, Label, Layout, Rect,
+    RichText, Sense, Stroke, Ui, Vec2, Widget,
 };
 use shadcn_egui::{
     Palette, Theme,
     components::{
         button::{Button, ButtonSize, ButtonVariant},
-        icon::{Icon, IconView},
+        icon::{Glyph, Icon as KitIcon, IconShape},
         kbd::{Kbd, KbdGroup},
         slider::{Slider, SliderVariant},
     },
-    style::{AppVariant, Paint, Prop, Radius, Role, Weight},
+    style::{AppEnum, AppVariant, Paint, Prop, Radius, Recipe, Role, State, Weight, pick},
     theme::heading_family_for,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -105,6 +106,7 @@ pub fn install(ctx: &egui::Context, appearance: Appearance) -> bool {
         }
     }
     kit.apply_with_fonts(ctx, fonts);
+    icons::install(ctx);
     set_mode(ctx, appearance);
     let animate = system_animations_enabled();
     for mode in [egui::Theme::Dark, egui::Theme::Light] {
@@ -198,8 +200,117 @@ pub fn panel(ui: &Ui) -> Frame {
         .corner_radius(12)
 }
 
-pub fn toolbar_button(label: &str, icon: Icon, variant: ButtonVariant) -> Button {
-    Button::new(label).variant(variant).icon(icon)
+const ICON_SLOT: KitIcon = KitIcon {
+    name: "iconly-slot",
+    size: 0.0,
+    shape: IconShape::Segs(&[]),
+};
+
+pub fn toolbar_button(label: &str, icon: Icon, variant: ButtonVariant) -> IconButton<'_> {
+    IconButton {
+        label,
+        icon,
+        variant,
+        size: ButtonSize::Default,
+        busy: false,
+        color: None,
+    }
+}
+
+pub struct IconButton<'a> {
+    label: &'a str,
+    icon: Icon,
+    variant: ButtonVariant,
+    size: ButtonSize,
+    busy: bool,
+    color: Option<Color32>,
+}
+
+impl IconButton<'_> {
+    pub fn size(mut self, size: impl Into<ButtonSize>) -> Self {
+        self.size = size.into();
+        self
+    }
+
+    pub fn busy(mut self, busy: bool) -> Self {
+        self.busy = busy;
+        self
+    }
+
+    pub fn color(mut self, color: Color32) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+impl Widget for IconButton<'_> {
+    fn ui(self, ui: &mut Ui) -> egui::Response {
+        let glyph = if self.busy {
+            Glyph::Spinner
+        } else {
+            ICON_SLOT.into()
+        };
+        let response = ui.add(
+            Button::new(self.label)
+                .variant(self.variant)
+                .size(self.size)
+                .icon(glyph),
+        );
+        if self.busy || !ui.is_rect_visible(response.rect) {
+            return response;
+        }
+
+        // Let the kit lay out the hit target, label and icon slot, then paint the atlas in the slot.
+        let theme = Theme::current(ui.ctx());
+        let style = &theme.style;
+        let variant = match self.variant {
+            ButtonVariant::Outline => &style.button_variant_outline,
+            ButtonVariant::Secondary => &style.button_variant_secondary,
+            ButtonVariant::Ghost => &style.button_variant_ghost,
+            ButtonVariant::Destructive => &style.button_variant_destructive,
+            ButtonVariant::Link => &style.button_variant_link,
+            _ => &style.button_variant_default,
+        };
+        let (size, icon_only) = match self.size {
+            ButtonSize::Xs => (&style.button_size_xs, false),
+            ButtonSize::Sm => (&style.button_size_sm, false),
+            ButtonSize::Lg => (&style.button_size_lg, false),
+            ButtonSize::Icon => (&style.button_size_icon, true),
+            ButtonSize::IconXs => (&style.button_size_icon_xs, true),
+            ButtonSize::IconSm => (&style.button_size_icon_sm, true),
+            ButtonSize::IconLg | ButtonSize::App(_) => (&style.button_size_icon_lg, true),
+            _ => (&style.button_size_default, false),
+        };
+        let layers: [&Recipe; 3] = [&style.button, variant, size];
+        let state = theme.state(
+            ui.ctx(),
+            self.variant.bits() | self.size.bits() | State::ICON_START,
+        );
+        let slot = pick(&layers, |recipe| &recipe.icon_size, state).unwrap_or(theme.metrics.icon);
+        let mut center = response.rect.center();
+        if !icon_only {
+            let inset = pick(&layers, |recipe| &recipe.pad_left, state).unwrap_or_default();
+            let border = pick(&layers, |recipe| &recipe.border_width, state).unwrap_or_default();
+            center.x = response.rect.left() + inset + border + slot / 2.0;
+        }
+        let p = theme.palette();
+        let mut color = self.color.unwrap_or(match self.variant {
+            ButtonVariant::Default => p.primary_foreground,
+            ButtonVariant::Secondary => p.secondary_foreground,
+            ButtonVariant::Destructive => p.destructive,
+            ButtonVariant::Link => p.primary,
+            ButtonVariant::Outline | ButtonVariant::Ghost if response.hovered() => {
+                p.accent_foreground
+            }
+            _ => p.foreground,
+        });
+        if !response.enabled() {
+            color = color.gamma_multiply(0.48);
+        }
+        let rect = Rect::from_center_size(center, Vec2::splat(slot + 2.0));
+        icons::paint_hover(ui, &response, rect, self.icon, color);
+        response
+    }
 }
 
 pub fn icon_button(ui: &mut Ui, label: &str, icon: Icon, variant: ButtonVariant) -> egui::Response {
@@ -207,8 +318,11 @@ pub fn icon_button(ui: &mut Ui, label: &str, icon: Icon, variant: ButtonVariant)
         .on_hover_text(label)
 }
 
-pub fn icon(ui: &mut Ui, glyph: &Icon, size: f32, color: Color32) {
-    ui.add(IconView::new(glyph).size(size).color(color));
+pub fn icon(ui: &mut Ui, glyph: Icon, size: f32, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        icons::paint(ui, rect.expand(1.0), glyph, color);
+    }
 }
 
 pub fn keycaps(ui: &mut Ui, key: &str) {

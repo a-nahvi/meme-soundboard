@@ -1,17 +1,13 @@
-use super::{App, LIBRARY_FILE, clip_count, design, shortcut_dialog::ShortcutTarget};
+use super::{App, LIBRARY_FILE, clip_count, design, icons::Icon, shortcut_dialog::ShortcutTarget};
 use crate::{audio::ClipProgress, storage::Clip};
 use eframe::egui::{
     self, Align, CornerRadius, Frame, Layout, Margin, RichText, Sense, Stroke, Ui, UiBuilder, Vec2,
 };
-use shadcn_egui::{
-    components::{
-        badge::{Badge, BadgeVariant},
-        button::{Button, ButtonSize, ButtonVariant},
-        dialog::{Dialog, footer},
-        icon::{Glyph, Seg},
-        input::Input,
-    },
-    icons::lucide,
+use shadcn_egui::components::{
+    badge::{Badge, BadgeVariant},
+    button::{Button, ButtonSize, ButtonVariant},
+    dialog::{Dialog, footer},
+    input::Input,
 };
 use std::{fs, process::Command};
 
@@ -62,15 +58,17 @@ impl App {
                 design::muted(ui, clip_count(self.clips.len()));
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let (label, icon) = if self.importing {
-                    ("Importing…", Glyph::Spinner)
+                let label = if self.importing {
+                    "Importing…"
                 } else {
-                    ("Import audio", lucide::PLUS.into())
+                    "Import audio"
                 };
                 if ui
                     .add_enabled(
                         !self.importing,
-                        Button::new(label).size(ButtonSize::Lg).icon(icon),
+                        design::toolbar_button(label, Icon::PLUS, ButtonVariant::Default)
+                            .size(ButtonSize::Lg)
+                            .busy(self.importing),
                     )
                     .clicked()
                 {
@@ -78,10 +76,12 @@ impl App {
                 }
                 if ui
                     .add(
-                        Button::new("Open clips folder")
-                            .icon(lucide::FOLDER_OPEN)
-                            .variant(ButtonVariant::Outline)
-                            .size(ButtonSize::IconLg),
+                        design::toolbar_button(
+                            "Open clips folder",
+                            Icon::FOLDER,
+                            ButtonVariant::Outline,
+                        )
+                        .size(ButtonSize::IconLg),
                     )
                     .on_hover_text("Open clips folder")
                     .clicked()
@@ -103,7 +103,7 @@ impl App {
 
         let p = design::palette(ui);
         ui.horizontal(|ui| {
-            design::icon(ui, &lucide::SEARCH, 16.0, p.muted_foreground);
+            design::icon(ui, Icon::SEARCH, 16.0, p.muted_foreground);
             let search = ui.add(
                 Input::new(&mut self.filter)
                     .hint("Find a clip…")
@@ -113,7 +113,7 @@ impl App {
                 self.update_filter();
             }
             if !self.filter.is_empty()
-                && design::icon_button(ui, "Clear search", lucide::X, ButtonVariant::Ghost)
+                && design::icon_button(ui, "Clear search", Icon::CLOSE, ButtonVariant::Ghost)
                     .clicked()
             {
                 self.filter.clear();
@@ -126,7 +126,12 @@ impl App {
                 } else {
                     ButtonVariant::Outline
                 };
-                let filter = ui.add(design::toolbar_button("Favorites", lucide::STAR, variant));
+                let icon = if self.favorites {
+                    Icon::STAR_FILLED
+                } else {
+                    Icon::STAR
+                };
+                let filter = ui.add(design::toolbar_button("Favorites", icon, variant));
                 if filter
                     .on_hover_text(if self.favorites {
                         "Show all clips"
@@ -267,11 +272,11 @@ impl App {
                             cancelled = true;
                         }
                         if ui
-                            .add(
-                                Button::new("Delete")
-                                    .variant(ButtonVariant::Destructive)
-                                    .icon(lucide::TRASH_2),
-                            )
+                            .add(design::toolbar_button(
+                                "Delete",
+                                Icon::DELETE,
+                                ButtonVariant::Destructive,
+                            ))
                             .clicked()
                         {
                             submitted = true;
@@ -358,13 +363,13 @@ fn clip_row(
     let mut action = None;
     let (play_icon, play_label, play_action) = if active {
         (
-            lucide::SQUARE,
+            Icon::STOP,
             "Stop clip",
             LibraryAction::Stop(i, !playback.chat),
         )
     } else {
         (
-            lucide::PLAY,
+            Icon::PLAY,
             "Play into voice chat",
             LibraryAction::Play(i, false),
         )
@@ -374,14 +379,16 @@ fn clip_row(
     } else {
         format!("Play {} into voice chat", clip.name)
     };
-    let play = Button::new(accessible_play_label)
-        .icon(play_icon)
-        .size(design::ROUND_CONTROL)
-        .variant(if active {
+    let play = design::toolbar_button(
+        &accessible_play_label,
+        play_icon,
+        if active {
             ButtonVariant::Default
         } else {
             ButtonVariant::Secondary
-        });
+        },
+    )
+    .size(design::ROUND_CONTROL);
     if row
         .add_enabled(active || !missing, play)
         .on_hover_text(play_label)
@@ -445,17 +452,12 @@ fn clip_row(
 
     row.with_layout(Layout::right_to_left(Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = ACTION_GAP;
-        if design::icon_button(
-            ui,
-            "Delete clip",
-            lucide::TRASH_2,
-            ButtonVariant::Destructive,
-        )
-        .clicked()
+        if design::icon_button(ui, "Delete clip", Icon::DELETE, ButtonVariant::Destructive)
+            .clicked()
         {
             action = Some(LibraryAction::Edit(i, ClipEdit::Delete));
         }
-        if design::icon_button(ui, "Rename clip", lucide::PENCIL, ButtonVariant::Ghost).clicked() {
+        if design::icon_button(ui, "Rename clip", Icon::RENAME, ButtonVariant::Ghost).clicked() {
             action = Some(LibraryAction::Edit(i, ClipEdit::Rename));
         }
         let trim_label = if clip.trim.is_some() {
@@ -468,7 +470,7 @@ fn clip_row(
                 !missing,
                 design::toolbar_button(
                     trim_label,
-                    lucide::SCISSORS,
+                    Icon::TRIM,
                     if clip.trim.is_some() {
                         ButtonVariant::Secondary
                     } else {
@@ -486,10 +488,10 @@ fn clip_row(
             action = Some(LibraryAction::Favorite(i));
         }
         let (preview_icon, preview_label, preview_variant) = if playback.preview {
-            (lucide::SQUARE, "Stop preview", ButtonVariant::Secondary)
+            (Icon::STOP, "Stop preview", ButtonVariant::Secondary)
         } else {
             (
-                lucide::HEADPHONES,
+                Icon::HEADPHONES,
                 "Preview on headphones",
                 ButtonVariant::Ghost,
             )
@@ -497,10 +499,8 @@ fn clip_row(
         if ui
             .add_enabled(
                 playback.preview || !missing,
-                Button::new(preview_label)
-                    .icon(preview_icon)
-                    .size(ButtonSize::IconSm)
-                    .variant(preview_variant),
+                design::toolbar_button(preview_label, preview_icon, preview_variant)
+                    .size(ButtonSize::IconSm),
             )
             .on_hover_text(preview_label)
             .on_disabled_hover_text("File missing from clips folder")
@@ -543,34 +543,18 @@ fn clip_row(
 }
 
 fn favorite_button(ui: &mut Ui, favorite: bool) -> egui::Response {
-    let (label, variant) = if favorite {
-        ("Remove favorite", ButtonVariant::Secondary)
-    } else {
-        ("Add favorite", ButtonVariant::Ghost)
-    };
-    let response = design::icon_button(ui, label, lucide::STAR, variant);
-    if favorite && ui.is_rect_visible(response.rect) {
-        // Fill the Lucide outline with a triangle fan using its path endpoints.
-        let start = response.rect.center() - Vec2::splat(8.0);
+    if favorite {
+        let label = "Remove favorite";
         let color = design::favorite_color(ui);
-        let mut mesh = egui::Mesh::default();
-        mesh.colored_vertex(response.rect.center(), color);
-        for segment in lucide::STAR.layers().flat_map(|layer| layer.segs) {
-            let (x, y) = match segment {
-                Seg::M(x, y) | Seg::L(x, y) | Seg::Q(_, _, x, y) | Seg::C(_, _, _, _, x, y) => {
-                    (x, y)
-                }
-                Seg::Z => continue,
-            };
-            mesh.colored_vertex(start + Vec2::new(x, y) * (16.0 / lucide::STAR.size), color);
-        }
-        let perimeter = mesh.vertices.len() as u32 - 1;
-        for index in 1..=perimeter {
-            mesh.add_triangle(0, index, index % perimeter + 1);
-        }
-        ui.painter().add(egui::Shape::mesh(mesh));
+        ui.add(
+            design::toolbar_button(label, Icon::STAR_FILLED, ButtonVariant::Secondary)
+                .size(ButtonSize::IconSm)
+                .color(color),
+        )
+        .on_hover_text(label)
+    } else {
+        design::icon_button(ui, "Add favorite", Icon::STAR, ButtonVariant::Ghost)
     }
-    response
 }
 
 pub(super) fn shortcut_button(ui: &mut Ui, key: Option<&str>, registered: bool) -> egui::Response {
@@ -594,7 +578,7 @@ fn playback_shortcut_button(
                 "Fix shortcut".into()
             },
             format!("{value} is unavailable. Choose another shortcut."),
-            lucide::TRIANGLE_ALERT,
+            Icon::WARNING,
         ),
         Some(value) => (
             if compact && value.len() <= 10 {
@@ -605,12 +589,12 @@ fn playback_shortcut_button(
                 "Shortcut".into()
             },
             format!("Change shortcut ({value})"),
-            lucide::KEYBOARD,
+            Icon::KEYBOARD,
         ),
         None => (
             "Set shortcut".into(),
             "Assign a global playback shortcut".into(),
-            lucide::KEYBOARD,
+            Icon::KEYBOARD,
         ),
     };
     let size = if icon_only {
@@ -628,16 +612,16 @@ fn empty(ui: &mut Ui, filtered: bool, favorites: bool) {
         (
             "No clips yet",
             "Import audio or drop files into the clips folder.",
-            lucide::MUSIC_2,
+            Icon::MUSIC,
         )
     } else if favorites {
         (
             "No favorite clips here",
             "Star a clip in Library or clear your filter.",
-            lucide::STAR,
+            Icon::STAR,
         )
     } else {
-        ("No matching clips", "Try a different name.", lucide::SEARCH)
+        ("No matching clips", "Try a different name.", Icon::SEARCH)
     };
     design::panel(ui)
         .inner_margin(Margin::symmetric(14, 25))
@@ -649,7 +633,7 @@ fn empty(ui: &mut Ui, filtered: bool, favorites: bool) {
                     .fill(p.secondary)
                     .corner_radius(12)
                     .inner_margin(Margin::same(12))
-                    .show(ui, |ui| design::icon(ui, &icon, 24.0, p.ring));
+                    .show(ui, |ui| design::icon(ui, icon, 24.0, p.ring));
                 ui.add_space(6.0);
                 ui.label(RichText::new(title).size(19.0).strong());
                 design::muted(ui, hint);

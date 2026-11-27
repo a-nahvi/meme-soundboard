@@ -1,13 +1,10 @@
-use super::{App, design, library::render_error};
+use super::{App, design, icons::Icon, library::render_error};
 use eframe::egui::{self, Event, Key, Margin, Modifiers, Ui};
 use global_hotkey::hotkey::HotKey;
-use shadcn_egui::{
-    components::{
-        button::{Button, ButtonSize, ButtonVariant},
-        dialog::{Dialog, footer},
-        input::Input,
-    },
-    icons::lucide,
+use shadcn_egui::components::{
+    button::{Button, ButtonSize, ButtonVariant},
+    dialog::{Dialog, footer},
+    input::Input,
 };
 
 pub(super) enum ShortcutTarget {
@@ -91,7 +88,7 @@ impl ShortcutDialog {
                 });
             } else {
                 ui.horizontal(|ui| {
-                    design::icon(ui, &lucide::KEYBOARD, 18.0, p.primary);
+                    design::icon(ui, Icon::KEYBOARD, 18.0, p.primary);
                     if self.recording {
                         ui.label("Press a key or combination");
                     } else if let Some(key) = &self.candidate {
@@ -120,10 +117,8 @@ impl ShortcutDialog {
             } else if !self.recording
                 && ui
                     .add(
-                        Button::new("Record keys")
-                            .variant(ButtonVariant::Ghost)
-                            .size(ButtonSize::Sm)
-                            .icon(lucide::KEYBOARD),
+                        design::toolbar_button("Record keys", Icon::KEYBOARD, ButtonVariant::Ghost)
+                            .size(ButtonSize::Sm),
                     )
                     .clicked()
             {
@@ -189,7 +184,11 @@ impl App {
                     if ui
                         .add_enabled(
                             dialog.pending().is_some(),
-                            Button::new("Save shortcut").icon(lucide::CHECK),
+                            design::toolbar_button(
+                                "Save shortcut",
+                                Icon::CHECK,
+                                ButtonVariant::Default,
+                            ),
                         )
                         .clicked()
                     {

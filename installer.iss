@@ -1,7 +1,7 @@
 [Setup]
 AppId=MemeSoundboard.Windows
 AppName=Meme Soundboard
-AppVersion=0.4.3
+AppVersion=0.4.4
 AppPublisher=Meme Soundboard
 DefaultDirName={localappdata}\Programs\Meme Soundboard
 DefaultGroupName=Meme Soundboard
@@ -21,7 +21,7 @@ Compression=lzma2
 SolidCompression=yes
 ArchiveExtraction=full
 WizardStyle=modern
-VersionInfoVersion=0.4.3.0
+VersionInfoVersion=0.4.4.0
 VersionInfoDescription=Meme Soundboard Setup
 
 [Languages]

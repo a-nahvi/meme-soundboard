@@ -1,4 +1,4 @@
-use super::{App, LIBRARY_FILE, clip_action, design, library::render_error};
+use super::{App, LIBRARY_FILE, clip_action, design, icons::Icon, library::render_error};
 use crate::{
     audio::{ClipAudioInfo, Player, Source},
     storage::ClipTrim,
@@ -8,12 +8,9 @@ use eframe::egui::{
     self, Align, DragValue, Layout, PointerButton, Rect, RichText, Sense, Stroke, StrokeKind, Ui,
     pos2, vec2,
 };
-use shadcn_egui::{
-    components::{
-        button::{Button, ButtonVariant},
-        dialog::Dialog,
-    },
-    icons::lucide,
+use shadcn_egui::components::{
+    button::{Button, ButtonVariant},
+    dialog::Dialog,
 };
 
 pub(super) struct TrimDialog {
@@ -128,9 +125,9 @@ impl App {
                 ui.horizontal(|ui| {
                     let previewing = preview_elapsed.is_some() && dialog.draft == previous_draft;
                     let (label, icon, preview_action) = if previewing {
-                        ("Stop preview", lucide::SQUARE, TrimAction::StopPreview)
+                        ("Stop preview", Icon::STOP, TrimAction::StopPreview)
                     } else {
-                        ("Preview", lucide::PLAY, TrimAction::Preview)
+                        ("Preview", Icon::PLAY, TrimAction::Preview)
                     };
                     if ui
                         .add_enabled(

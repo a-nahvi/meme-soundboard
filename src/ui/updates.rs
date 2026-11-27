@@ -1,13 +1,10 @@
-use super::design;
+use super::{design, icons::Icon};
 use crate::releases::{self, AvailableUpdate};
 use anyhow::Result;
 use eframe::egui::{self, RichText, Ui};
-use shadcn_egui::{
-    components::{
-        button::ButtonVariant,
-        card::{Card, CardSize, card_content, card_header},
-    },
-    icons::lucide,
+use shadcn_egui::components::{
+    button::ButtonVariant,
+    card::{Card, CardSize, card_content, card_header},
 };
 use std::{path::Path, sync::mpsc, thread};
 
@@ -49,7 +46,7 @@ impl Updates {
                             self.pending.is_none(),
                             design::toolbar_button(
                                 "Check for updates",
-                                lucide::REFRESH_CW,
+                                Icon::REFRESH,
                                 ButtonVariant::Outline,
                             ),
                         )
@@ -65,7 +62,7 @@ impl Updates {
                     if ui
                         .add(design::toolbar_button(
                             "Open GitHub releases",
-                            lucide::ARROW_UP_RIGHT,
+                            Icon::EXTERNAL_LINK,
                             ButtonVariant::Ghost,
                         ))
                         .clicked()
@@ -92,7 +89,7 @@ impl Updates {
                         if ui
                             .add(design::toolbar_button(
                                 "Download and install",
-                                lucide::DOWNLOAD,
+                                Icon::DOWNLOAD,
                                 ButtonVariant::Default,
                             ))
                             .clicked()

@@ -1,23 +1,39 @@
-use eframe::egui::Rect;
-use std::{mem::size_of, ptr::null_mut, sync::Mutex};
+use eframe::egui::{Color32, Rect};
+use std::{mem::size_of_val, ptr::null_mut, sync::Mutex};
 use windows_sys::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, POINT, RECT},
-    Graphics::Gdi::{
-        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, ScreenToClient,
+    Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+    Graphics::{
+        Dwm::{DWMWA_CAPTION_COLOR, DwmSetWindowAttribute},
+        Gdi::ScreenToClient,
     },
     UI::{
-        HiDpi::GetDpiForWindow,
+        HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi},
+        Shell::DefSubclassProc,
         WindowsAndMessaging::{
-            GetClientRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT,
-            HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, IsZoomed, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-            SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, WM_NCCALCSIZE, WM_NCHITTEST,
+            GetClientRect, HTCAPTION, HTCLIENT, SM_CXPADDEDBORDER, SM_CYSIZEFRAME,
+            SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+            WM_NCCALCSIZE, WM_NCHITTEST,
         },
     },
 };
 
-static CAPTION: Mutex<[i32; 4]> = Mutex::new([0; 4]);
+struct Caption {
+    rect: [i32; 4],
+    window: usize,
+    color: Option<u32>,
+}
+
+static CAPTION: Mutex<Caption> = Mutex::new(Caption {
+    rect: [0; 4],
+    window: 0,
+    color: None,
+});
 
 pub fn apply(window: HWND) {
+    if let Ok(mut caption) = CAPTION.lock() {
+        caption.window = window as usize;
+        caption.color = None;
+    }
     // Preserve the resizable window style and ask Windows to recalculate its client area.
     unsafe {
         SetWindowPos(
@@ -32,81 +48,78 @@ pub fn apply(window: HWND) {
     }
 }
 
-pub fn set_caption(rect: Rect, pixels_per_point: f32) {
-    if let Ok(mut caption) = CAPTION.lock() {
-        *caption = [rect.left(), rect.top(), rect.right(), rect.bottom()]
+pub fn set_caption(rect: Rect, pixels_per_point: f32, fill: Color32) {
+    let color = u32::from_le_bytes([fill.r(), fill.g(), fill.b(), 0]);
+    let window = {
+        let Ok(mut caption) = CAPTION.lock() else {
+            return;
+        };
+        caption.rect = [rect.left(), rect.top(), rect.right(), rect.bottom()]
             .map(|point| (point * pixels_per_point).round() as i32);
+        if caption.window == 0 || caption.color == Some(color) {
+            return;
+        }
+        caption.color = Some(color);
+        caption.window as HWND
+    };
+    // Match the exposed part of the native caption to the custom header's fill.
+    unsafe {
+        DwmSetWindowAttribute(
+            window,
+            DWMWA_CAPTION_COLOR as u32,
+            (&raw const color).cast(),
+            size_of_val(&color) as u32,
+        );
     }
 }
 
-pub unsafe fn window_message(window: HWND, message: u32, lparam: LPARAM) -> Option<LRESULT> {
+pub unsafe fn window_message(
+    window: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> Option<LRESULT> {
     match message {
-        WM_NCCALCSIZE => {
-            if lparam != 0 && unsafe { IsZoomed(window) } != 0 {
-                // Both forms of WM_NCCALCSIZE put the proposed rectangle at this address.
-                let rect = unsafe { &mut *(lparam as *mut RECT) };
-                let monitor = unsafe { MonitorFromRect(rect, MONITOR_DEFAULTTONEAREST) };
-                let mut info = MONITORINFO {
-                    cbSize: size_of::<MONITORINFO>() as u32,
-                    ..Default::default()
-                };
-                if !monitor.is_null() && unsafe { GetMonitorInfoW(monitor, &mut info) } != 0 {
-                    *rect = info.rcWork;
-                }
-            }
+        WM_NCCALCSIZE if lparam != 0 => {
+            // Both forms of this message start with the proposed window rectangle.
+            let rect = lparam as *mut RECT;
+            let window_top = unsafe { (*rect).top };
+            unsafe { DefSubclassProc(window, message, wparam, lparam) };
+            let dpi = unsafe { GetDpiForWindow(window) };
+            let border = unsafe {
+                GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi)
+                    + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi)
+            };
+            // Keep the window manager's frame on all sides. Only reclaim its caption height.
+            unsafe { (*rect).top = (*rect).top.min(window_top + border) };
             Some(0)
         }
-        WM_NCHITTEST => Some(hit_test(window, lparam) as LRESULT),
+        WM_NCHITTEST => hit_test_client(window, lparam),
         _ => None,
     }
 }
 
-fn hit_test(window: HWND, lparam: LPARAM) -> u32 {
+fn hit_test_client(window: HWND, lparam: LPARAM) -> Option<LRESULT> {
     let mut point = POINT {
         x: lparam as i16 as i32,
         y: (lparam >> 16) as i16 as i32,
     };
-    if unsafe { ScreenToClient(window, &mut point) } == 0 {
-        return HTCLIENT;
+    let mut client = RECT::default();
+    if unsafe { ScreenToClient(window, &mut point) } == 0
+        || unsafe { GetClientRect(window, &mut client) } == 0
+        || !(client.left..client.right).contains(&point.x)
+        || !(client.top..client.bottom).contains(&point.y)
+    {
+        return None;
     }
-    if unsafe { IsZoomed(window) } == 0 {
-        let mut rect = RECT::default();
-        if unsafe { GetClientRect(window, &mut rect) } != 0 {
-            let width = (unsafe { GetDpiForWindow(window) } as i32 * 6 / 96).max(4);
-            let x = if point.x < width {
-                -1
-            } else if point.x >= rect.right - width {
-                1
-            } else {
-                0
-            };
-            let y = if point.y < width {
-                -1
-            } else if point.y >= rect.bottom - width {
-                1
-            } else {
-                0
-            };
-            let edge = match (x, y) {
-                (-1, -1) => HTTOPLEFT,
-                (1, -1) => HTTOPRIGHT,
-                (-1, 1) => HTBOTTOMLEFT,
-                (1, 1) => HTBOTTOMRIGHT,
-                (0, -1) => HTTOP,
-                (0, 1) => HTBOTTOM,
-                (-1, 0) => HTLEFT,
-                (1, 0) => HTRIGHT,
-                _ => HTCLIENT,
-            };
-            if edge != HTCLIENT {
-                return edge;
-            }
-        }
-    }
-    let [left, top, right, bottom] = *CAPTION.lock().unwrap_or_else(|error| error.into_inner());
-    if (left..right).contains(&point.x) && (top..bottom).contains(&point.y) {
+    let [left, top, right, bottom] = CAPTION
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .rect;
+    let hit = if (left..right).contains(&point.x) && (top..bottom).contains(&point.y) {
         HTCAPTION
     } else {
         HTCLIENT
-    }
+    };
+    Some(hit as LRESULT)
 }

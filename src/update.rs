@@ -116,7 +116,9 @@ unsafe extern "system" fn window_proc(
     _: usize,
     _: usize,
 ) -> LRESULT {
-    if let Some(result) = unsafe { crate::window_frame::window_message(window, message, lparam) } {
+    if let Some(result) =
+        unsafe { crate::window_frame::window_message(window, message, wparam, lparam) }
+    {
         return result;
     }
     if message == shutdown_message() {

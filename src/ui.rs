@@ -1,4 +1,5 @@
 mod design;
+mod icons;
 mod library;
 mod settings;
 mod shortcut_dialog;
@@ -15,10 +16,8 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use eframe::egui::{self, Align, Align2, Frame, Layout, Margin, RichText, Stroke, Ui};
-use shadcn_egui::{
-    components::button::{Button, ButtonSize, ButtonVariant},
-    icons::lucide,
-};
+use icons::Icon;
+use shadcn_egui::components::button::{ButtonSize, ButtonVariant};
 use shortcut_dialog::{ShortcutDialog, ShortcutTarget};
 use std::{
     collections::HashSet,
@@ -852,36 +851,32 @@ impl App {
                     .on_hover_text("Meme Soundboard");
                     ui.add_space(18.0);
                     for (page, label, icon) in [
-                        (Page::Library, "Library", lucide::LIBRARY),
+                        (Page::Library, "Library", Icon::LIBRARY),
                         (
                             Page::Settings(SettingsTab::Audio),
                             "Audio devices",
-                            lucide::PLUG,
+                            Icon::AUDIO_DEVICES,
                         ),
-                        (
-                            Page::Settings(SettingsTab::Mix),
-                            "Mix",
-                            lucide::SLIDERS_HORIZONTAL,
-                        ),
+                        (Page::Settings(SettingsTab::Mix), "Mix", Icon::MIX),
                         (
                             Page::Settings(SettingsTab::Shortcuts),
                             "Shortcuts",
-                            lucide::KEYBOARD,
+                            Icon::KEYBOARD,
                         ),
                         (
                             Page::Settings(SettingsTab::Appearance),
                             "Appearance",
-                            lucide::PALETTE,
+                            Icon::APPEARANCE,
                         ),
                         (
                             Page::Settings(SettingsTab::Updates),
                             "Updates",
-                            lucide::DOWNLOAD,
+                            Icon::DOWNLOAD,
                         ),
                         (
                             Page::Settings(SettingsTab::Diagnostics),
                             "Diagnostics",
-                            lucide::FILE_TEXT,
+                            Icon::DOCUMENT,
                         ),
                     ] {
                         let variant = if page == self.page {
@@ -891,10 +886,7 @@ impl App {
                         };
                         if ui
                             .add(
-                                Button::new(label)
-                                    .icon(icon)
-                                    .size(ButtonSize::Icon)
-                                    .variant(variant),
+                                design::toolbar_button(label, icon, variant).size(ButtonSize::Icon),
                             )
                             .on_hover_text(label)
                             .clicked()
@@ -973,7 +965,7 @@ impl App {
                                         || self.current_playback(true).is_some(),
                                     design::toolbar_button(
                                         "Stop",
-                                        lucide::SQUARE,
+                                        Icon::STOP,
                                         ButtonVariant::Outline,
                                     ),
                                 )
@@ -992,9 +984,9 @@ impl App {
     fn mic_control(&mut self, ui: &mut Ui) {
         let muted = self.settings.mic_muted;
         let (icon, action) = if muted {
-            (lucide::MIC_OFF, "Unmute microphone")
+            (Icon::MIC_OFF, "Unmute microphone")
         } else {
-            (lucide::MIC, "Mute microphone")
+            (Icon::MIC, "Mute microphone")
         };
         if ui
             .add(
@@ -1039,19 +1031,18 @@ impl App {
         let on_air = self.playing(false);
         if let Some((play, progress)) = on_air.or_else(|| self.playing(true)) {
             let icon = if on_air.is_some() {
-                lucide::AUDIO_WAVEFORM
+                Icon::WAVEFORM
             } else {
-                lucide::HEADPHONES
+                Icon::HEADPHONES
             };
             let (badge, _) = ui.allocate_exact_size(egui::Vec2::splat(32.0), egui::Sense::hover());
             ui.painter()
                 .circle_filled(badge.center(), 16.0, p.secondary);
-            shadcn_egui::components::icon::paint_icon(
-                ui.painter(),
-                egui::Rect::from_center_size(badge.center(), egui::Vec2::splat(16.0)),
-                &icon,
+            icons::paint(
+                ui,
+                egui::Rect::from_center_size(badge.center(), egui::Vec2::splat(18.0)),
+                icon,
                 p.secondary_foreground,
-                2.0,
             );
             let width = ui.available_width();
             let seek = ui
@@ -1074,16 +1065,16 @@ impl App {
                 self.seek_playback(on_air.is_none(), elapsed_ms);
             }
         } else if self.route.cable.is_some() {
-            design::icon(ui, &lucide::PLUG, 16.0, design::mic_color(ui));
+            design::icon(ui, Icon::AUDIO_DEVICES, 16.0, design::mic_color(ui));
             design::muted(ui, "Voice output ready");
         } else if self.settings.local_playback_only && self.route.headphones.is_some() {
-            design::icon(ui, &lucide::HEADPHONES, 16.0, p.muted_foreground);
+            design::icon(ui, Icon::HEADPHONES, 16.0, p.muted_foreground);
             design::muted(ui, "Local playback");
         } else if self.route_checked
             && ui
                 .add(design::toolbar_button(
                     "Set up voice output",
-                    lucide::PLUG,
+                    Icon::AUDIO_DEVICES,
                     ButtonVariant::Ghost,
                 ))
                 .clicked()
@@ -1111,9 +1102,9 @@ impl App {
             .show(ctx, |ui| {
                 let p = design::palette(ui);
                 let (icon, color) = if notice.error {
-                    (lucide::TRIANGLE_ALERT, p.destructive)
+                    (Icon::WARNING, p.destructive)
                 } else {
-                    (lucide::CIRCLE_CHECK, p.primary)
+                    (Icon::SUCCESS, p.primary)
                 };
                 Frame::new()
                     .fill(p.popover)
@@ -1142,7 +1133,7 @@ impl App {
                         let height = text.size().y.max(32.0);
                         let layout = Layout::left_to_right(Align::Center);
                         ui.allocate_ui_with_layout(egui::vec2(width, height), layout, |ui| {
-                            design::icon(ui, &icon, icon_size, color);
+                            design::icon(ui, icon, icon_size, color);
                             ui.allocate_ui_with_layout(
                                 egui::vec2(text_width, height),
                                 layout,
@@ -1154,7 +1145,7 @@ impl App {
                             dismiss = design::icon_button(
                                 ui,
                                 "Dismiss notification",
-                                lucide::X,
+                                Icon::CLOSE,
                                 ButtonVariant::Ghost,
                             )
                             .clicked();

@@ -48,7 +48,13 @@ cargo build --locked --release
 .\build-installer.ps1 -Iscc 'C:\path\to\ISCC.exe'
 ```
 
-The installer script uses Inno Setup. The x64 build links the Visual C++ runtime statically. CPAL opens Windows WASAPI endpoints, Symphonia decodes audio outside the audio callbacks, and egui renders the desktop window with [shadcn-egui](https://github.com/oetiker/shadcn-egui) components and [Lucide](https://lucide.dev/) icons. Imports are decoded on a worker. Device, playback, and import events wake the UI as needed.
+The installer script uses Inno Setup. The x64 build links the Visual C++ runtime statically. CPAL opens Windows WASAPI endpoints, Symphonia decodes audio outside the audio callbacks, and egui renders the desktop window with shadcn-egui components. Imports are decoded on a worker. Device, playback, and import events wake the UI as needed. [shadcn-egui](https://github.com/oetiker/shadcn-egui)
+
+The app embeds selected Iconly artwork and plays its animation once when you hover. It follows the Windows animation preference. To regenerate the atlas from your Iconly Local archive, run the script with Python and Pillow. [Iconly](https://iconly.pro/)
+
+```powershell
+python .\tools\prepare-iconly-atlas.py 'C:\path\to\iconly-local\library'
+```
 
 `src/audio.rs` handles device selection, mixing, playback, and resampling. `src/storage.rs` and `src/folder.rs` manage local data and folder notifications. `src/shortcuts.rs` processes global key presses on a Win32 message thread. `src/tray.rs` handles the tray menu. `src/ui/` contains the library, settings, shortcut recorder, and design tokens.
 

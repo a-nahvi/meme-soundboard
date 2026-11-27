@@ -1,8 +1,8 @@
-use super::{App, design};
+use super::{App, design, icons::Icon};
 use eframe::egui::{
     self, Align, Align2, FontId, Frame, Layout, Margin, Sense, Stroke, Ui, ViewportCommand, vec2,
 };
-use shadcn_egui::{components::button::ButtonVariant, icons::lucide};
+use shadcn_egui::components::button::ButtonVariant;
 
 impl App {
     pub(super) fn window_frame(&mut self, ui: &mut Ui) {
@@ -20,28 +20,28 @@ impl App {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let ctx = ui.ctx().clone();
-                    if design::icon_button(ui, "Close", lucide::X, ButtonVariant::Ghost).clicked()
+                    if design::icon_button(ui, "Close", Icon::CLOSE, ButtonVariant::Ghost).clicked()
                         && !self.hide_to_tray(&ctx)
                     {
                         self.quitting = true;
                         ctx.send_viewport_cmd(ViewportCommand::Close);
                     }
                     let (label, icon) = if maximized {
-                        ("Restore", lucide::COPY)
+                        ("Restore", Icon::RESTORE)
                     } else {
-                        ("Maximize", lucide::SQUARE)
+                        ("Maximize", Icon::MAXIMIZE)
                     };
                     if design::icon_button(ui, label, icon, ButtonVariant::Ghost).clicked() {
                         ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
                     }
-                    if design::icon_button(ui, "Minimize", lucide::MINUS, ButtonVariant::Ghost)
+                    if design::icon_button(ui, "Minimize", Icon::MINIMIZE, ButtonVariant::Ghost)
                         .clicked()
                     {
                         ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
                     }
                     let (rect, _) =
                         ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::hover());
-                    crate::window_frame::set_caption(rect, ctx.pixels_per_point());
+                    crate::window_frame::set_caption(rect, ctx.pixels_per_point(), p.card);
                     ui.painter().text(
                         egui::pos2(rect.left() + 10.0, rect.center().y),
                         Align2::LEFT_CENTER,

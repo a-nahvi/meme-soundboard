@@ -1,21 +1,18 @@
 use super::{
-    App, STOP_ID, SettingsTab, design, library::shortcut_button, shortcut_dialog::ShortcutTarget,
+    App, STOP_ID, SettingsTab, design, icons::Icon, library::shortcut_button,
+    shortcut_dialog::ShortcutTarget,
 };
 use crate::{
     audio::{Endpoint, Source},
     storage::{Appearance, Settings},
 };
 use eframe::egui::{self, Align, Layout, Margin, RichText, Ui};
-use shadcn_egui::{
-    components::{
-        button::{Button, ButtonSize, ButtonVariant},
-        card::{Card, CardSize, card_content, card_header, card_header_with_action},
-        icon::Glyph,
-        select::Select,
-        slider::Slider,
-        switch::Switch,
-    },
-    icons::lucide,
+use shadcn_egui::components::{
+    button::{ButtonSize, ButtonVariant},
+    card::{Card, CardSize, card_content, card_header, card_header_with_action},
+    select::Select,
+    slider::Slider,
+    switch::Switch,
 };
 use std::{ops::RangeInclusive, process::Command, sync::atomic::Ordering::Relaxed};
 
@@ -46,9 +43,9 @@ impl App {
     fn routing(&mut self, ui: &mut Ui) {
         Card::new().size(CardSize::Sm).show(ui, |ui| {
             card_header_with_action(ui, "Audio devices", "Select the devices for voice chat.", |ui| {
-                let glyph = if self.refreshing { Glyph::Spinner } else { lucide::REFRESH_CW.into() };
-                if ui.add_enabled(!self.refreshing, Button::new("Refresh audio devices")
-                    .variant(ButtonVariant::Outline).size(ButtonSize::Icon).icon(glyph))
+                if ui.add_enabled(!self.refreshing, design::toolbar_button(
+                    "Refresh audio devices", Icon::REFRESH, ButtonVariant::Outline,
+                ).size(ButtonSize::Icon).busy(self.refreshing))
                     .on_hover_text("Refresh audio devices").clicked()
                 {
                     self.refreshing = true;
@@ -78,12 +75,12 @@ impl App {
                 ui.add_space(9.0);
                 ui.horizontal_wrapped(|ui| {
                     if ui.add_enabled(self.route.headphones.is_some(), design::toolbar_button(
-                        "Preview test", lucide::HEADPHONES, ButtonVariant::Outline,
+                        "Preview test", Icon::HEADPHONES, ButtonVariant::Outline,
                     )).clicked() {
                         self.test_tone(true);
                     }
                     if ui.add_enabled(self.route.cable.is_some(), design::toolbar_button(
-                        "Send test to chat", lucide::PLAY, ButtonVariant::Outline,
+                        "Send test to chat", Icon::PLAY, ButtonVariant::Outline,
                     )).clicked() {
                         self.test_tone(false);
                     }
@@ -175,7 +172,7 @@ impl App {
                 if ui
                     .add(design::toolbar_button(
                         "Windows startup settings",
-                        lucide::ARROW_UP_RIGHT,
+                        Icon::EXTERNAL_LINK,
                         ButtonVariant::Outline,
                     ))
                     .clicked()
@@ -251,7 +248,7 @@ impl App {
                 if ui
                     .add(design::toolbar_button(
                         "Open data folder",
-                        lucide::FOLDER_OPEN,
+                        Icon::FOLDER,
                         ButtonVariant::Outline,
                     ))
                     .clicked()
