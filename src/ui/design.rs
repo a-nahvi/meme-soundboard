@@ -5,7 +5,7 @@ use eframe::egui::{
     RichText, Sense, Stroke, Ui, Vec2, Widget,
 };
 use shadcn_egui::{
-    Palette, Theme,
+    FontFiles, FontKind, FontSource, Palette, Theme,
     components::{
         button::{Button, ButtonSize, ButtonVariant},
         card::{Card, CardSize, card_content},
@@ -23,6 +23,16 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 pub const GUTTER: i8 = 28;
 pub const ROUND_CONTROL: AppVariant<ButtonSize> = ButtonSize::app("round-control");
 const PLAYBACK_SLIDER: AppVariant<SliderVariant> = SliderVariant::app("playback");
+static VAZIRMATN: FontFiles = FontFiles {
+    name: "vazirmatn",
+    kind: FontKind::Sans,
+    source: FontSource::Variable {
+        data: include_bytes!("../../assets/fonts/Vazirmatn-Variable.ttf"),
+        wght: 100.0..=900.0,
+    },
+    y_offset_factor: 0.0,
+    license: include_str!("../../assets/licenses/Vazirmatn-OFL.txt"),
+};
 
 pub fn set_language(ctx: &egui::Context, language: Language) {
     ctx.data_mut(|data| data.insert_temp(egui::Id::unique("ui-language"), language));
@@ -61,7 +71,7 @@ const fn rgb(red: u8, green: u8, blue: u8) -> Color32 {
 }
 
 pub fn install(ctx: &egui::Context, appearance: Appearance) -> bool {
-    let mut kit = Theme::vega();
+    let mut kit = Theme::vega().fonts(&VAZIRMATN, None);
     kit.radius = 9.0;
     kit.dark = Palette {
         background: rgb(20, 28, 37),
@@ -122,7 +132,7 @@ pub fn install(ctx: &egui::Context, appearance: Appearance) -> bool {
         recipes.slider_thumb.bg.set(Paint::Role(Role::Primary, 1.0));
     });
 
-    // Inter supplies the kit's typography. Windows' Segoe UI covers Persian and other scripts.
+    // Segoe UI extends coverage for clip and device names in other scripts.
     let mut fonts = FontDefinitions::default();
     if let Some(windows) = std::env::var_os("WINDIR") {
         let file = std::path::PathBuf::from(windows)
@@ -728,6 +738,19 @@ mod tests {
         install(&ctx, Appearance::Light);
         set_language(&ctx, Language::Persian);
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let heading = heading_family_for(ui.ctx(), Weight::Semibold);
+            assert_ne!(heading, egui::FontFamily::Proportional);
+            ui.fonts(|fonts| {
+                let definitions = fonts.definitions();
+                for (family, weight) in [(egui::FontFamily::Proportional, 400), (heading, 600)] {
+                    let face = &definitions.font_data[&definitions.families[&family][0]];
+                    assert!(face.bytes() == VAZIRMATN.face(weight).data);
+                    assert_eq!(
+                        face.tweak.coords,
+                        egui::epaint::text::VariationCoords::new([(b"wght", f32::from(weight))]),
+                    );
+                }
+            });
             ui.with_layout(row(ui), |ui| {
                 let first = ui.label("اول");
                 let second = ui.label("دوم");

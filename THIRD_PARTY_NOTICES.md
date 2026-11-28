@@ -4,6 +4,10 @@
 
 The application uses egui 0.37 with a pinned bidirectional text patch and unicode-bidi. [Patch source](https://github.com/aiongg/egui/commit/620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0) · [egui license](assets/licenses/egui.txt) · [unicode-bidi license](assets/licenses/unicode-bidi.txt)
 
+## Vazirmatn
+
+The application embeds the Vazirmatn v33.003 variable font under the SIL Open Font License 1.1. [Upstream release](https://github.com/rastikerdar/vazirmatn/releases/tag/v33.003) · [License text](assets/licenses/Vazirmatn-OFL.txt)
+
 ## Lucide and Feather
 
 The default source build uses Lucide icons through shadcn-egui. Lucide is licensed under ISC and the Feather-derived icons are licensed under MIT. [License texts](assets/licenses/Lucide.txt)

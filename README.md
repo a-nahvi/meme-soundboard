@@ -74,8 +74,10 @@ cargo run --locked --features local-iconly
 
 ## Publish a release
 
+GitHub Releases is the sole publication channel for new versions.
+
 1. Set the version in `Cargo.toml`, `Cargo.lock`, `assets/app.rc`, and `installer.iss`. Build the official installer with `-WithIconly` and test an in-place upgrade from the previous release.
-2. Push the release commit to `main`. Check that the licensed Iconly files and generated atlas stay in the ignored local `assets/iconly/` directory.
+2. Push the release commit to `main`. Keep the licensed Iconly source local and the generated atlas in the ignored `assets/iconly/` directory.
 3. Create a stable GitHub Release for that commit using a `v`-prefixed tag. Attach `MemeSoundboard-Setup-x64.exe` and mark the release as latest once its asset is ready.
 4. Verify that the previous version finds the release in **Updates** and that the published download matches the installer.
 

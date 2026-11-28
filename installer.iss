@@ -1,7 +1,7 @@
 [Setup]
 AppId=MemeSoundboard.Windows
 AppName=Meme Soundboard
-AppVersion=0.4.8
+AppVersion=0.4.9
 AppPublisher=Meme Soundboard
 AppPublisherURL=https://github.com/a-nahvi/meme-soundboard
 AppSupportURL=https://github.com/a-nahvi/meme-soundboard/issues
@@ -24,7 +24,7 @@ Compression=lzma2
 SolidCompression=yes
 ArchiveExtraction=full
 WizardStyle=modern
-VersionInfoVersion=0.4.8.0
+VersionInfoVersion=0.4.9.0
 VersionInfoDescription=Meme Soundboard Setup
 
 [Languages]
@@ -51,6 +51,7 @@ Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\licenses\Lucide.txt"; DestDir: "{app}\assets\licenses"; Flags: ignoreversion
 Source: "assets\licenses\egui.txt"; DestDir: "{app}\assets\licenses"; Flags: ignoreversion
 Source: "assets\licenses\unicode-bidi.txt"; DestDir: "{app}\assets\licenses"; Flags: ignoreversion
+Source: "assets\licenses\Vazirmatn-OFL.txt"; DestDir: "{app}\assets\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{userprograms}\Meme Soundboard"; Filename: "{app}\meme-soundboard.exe"; WorkingDir: "{app}"; IconFilename: "{app}\meme-soundboard-icon-v2.ico"
