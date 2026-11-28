@@ -61,13 +61,14 @@ Builds use the GitHub `origin` as their update source. Source archives default t
 Publish a stable `v`-prefixed tag and attach `MemeSoundboard-Setup-x64.exe` to its GitHub Release. Test an in-place upgrade from the previous version before release.
 
 <details>
-<summary>Personal builds with Iconly</summary>
+<summary>Build the installer with Iconly</summary>
 
-With your licensed Iconly Local archive and Python with Pillow, generate the local atlas and enable `local-iconly` when building. The atlas is generated in `assets/iconly`.
+The official installer embeds rendered Iconly frames. With a licensed Iconly Local archive and Python with Pillow, generate those frames locally and build with the same artwork. The generated atlas and frame index live in the local `assets/iconly` directory.
 
 ```powershell
 python .\tools\prepare-iconly-atlas.py "C:\path\to\iconly-local\library"
 cargo run --locked --features local-iconly
+.\build-installer.ps1 -WithIconly -Iscc "C:\path\to\ISCC.exe"
 ```
 
 </details>

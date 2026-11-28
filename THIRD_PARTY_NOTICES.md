@@ -2,7 +2,7 @@
 
 ## Lucide and Feather
 
-The public build uses Lucide icons through shadcn-egui. Lucide is licensed under ISC and the Feather-derived icons are licensed under MIT. [License texts](assets/licenses/Lucide.txt)
+The default source build uses Lucide icons through shadcn-egui. Lucide is licensed under ISC and the Feather-derived icons are licensed under MIT. [License texts](assets/licenses/Lucide.txt)
 
 ## Virtual Audio Cable Lite
 
@@ -10,4 +10,4 @@ The optional microphone task includes the original Virtual Audio Cable Lite 4.71
 
 ## Iconly
 
-Personal builds can use an icon atlas generated from the owner's licensed Iconly archive. Iconly's terms govern that artwork. [Iconly licensing](https://iconly.pro/pages/licensing-guide)
+Official installers embed rendered Iconly frames as in-app artwork. The frame atlas is generated locally from a licensed Iconly archive. Iconly's terms govern that artwork. [Iconly licensing](https://iconly.pro/pages/licensing-guide)
