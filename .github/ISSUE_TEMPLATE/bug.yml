@@ -1,0 +1,41 @@
+name: Report a bug
+description: Report an issue with Soundboard, audio routing, shortcuts, or setup.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Soundboard version
+      description: Find the version in Updates.
+      placeholder: 0.4.6
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 25H2
+    validations:
+      required: true
+  - type: dropdown
+    id: audio-route
+    attributes:
+      label: Audio route
+      options:
+        - Local playback
+        - Soundboard Microphone (VAC Lite)
+        - VB-CABLE
+        - Another virtual audio device
+        - Setup, UI, or another feature
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Describe what happened and what you expected. For voice chat, include the destination app and its voice mode.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Include relevant lines from data/soundboard.log or a screenshot. Remove private paths and other personal details before posting.

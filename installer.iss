@@ -1,8 +1,11 @@
 [Setup]
 AppId=MemeSoundboard.Windows
 AppName=Meme Soundboard
-AppVersion=0.4.5
+AppVersion=0.4.6
 AppPublisher=Meme Soundboard
+AppPublisherURL=https://github.com/a-nahvi/meme-soundboard
+AppSupportURL=https://github.com/a-nahvi/meme-soundboard/issues
+AppUpdatesURL=https://github.com/a-nahvi/meme-soundboard/releases/latest
 DefaultDirName={localappdata}\Programs\Meme Soundboard
 DefaultGroupName=Meme Soundboard
 DisableProgramGroupPage=yes
@@ -21,7 +24,7 @@ Compression=lzma2
 SolidCompression=yes
 ArchiveExtraction=full
 WizardStyle=modern
-VersionInfoVersion=0.4.5.0
+VersionInfoVersion=0.4.6.0
 VersionInfoDescription=Meme Soundboard Setup
 
 [Languages]
@@ -41,7 +44,11 @@ Source: "target\release\meme-soundboard.exe"; Flags: dontcopy noencryption
 Source: "vendor\vac471lite.zip"; Flags: dontcopy noencryption
 Source: "target\release\meme-soundboard.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\app.ico"; DestDir: "{app}"; DestName: "meme-soundboard-icon-v2.ico"; Flags: ignoreversion
+Source: "assets\app.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "assets\licenses\Lucide.txt"; DestDir: "{app}\assets\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{userprograms}\Meme Soundboard"; Filename: "{app}\meme-soundboard.exe"; WorkingDir: "{app}"; IconFilename: "{app}\meme-soundboard-icon-v2.ico"

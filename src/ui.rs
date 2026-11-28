@@ -1,4 +1,5 @@
 mod design;
+#[cfg_attr(feature = "local-iconly", path = "ui/icons_iconly.rs")]
 mod icons;
 mod library;
 mod settings;

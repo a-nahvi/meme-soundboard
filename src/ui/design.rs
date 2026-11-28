@@ -106,6 +106,7 @@ pub fn install(ctx: &egui::Context, appearance: Appearance) -> bool {
         }
     }
     kit.apply_with_fonts(ctx, fonts);
+    #[cfg(feature = "local-iconly")]
     icons::install(ctx);
     set_mode(ctx, appearance);
     let animate = system_animations_enabled();

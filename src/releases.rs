@@ -21,7 +21,7 @@ use windows_sys::Win32::{
 };
 
 const INSTALLER: &str = "MemeSoundboard-Setup-x64.exe";
-pub const REPOSITORY: Option<&str> = option_env!("MEME_SOUNDBOARD_GITHUB_REPOSITORY");
+pub const REPOSITORY: &str = env!("MEME_SOUNDBOARD_GITHUB_REPOSITORY");
 pub const INSTALLED_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Deserialize)]
@@ -201,18 +201,21 @@ fn sha256(mut source: impl Read) -> Result<(u64, String)> {
 }
 
 fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Vec<u8>> {
-    let token = github_token().context(
-        "Sign in to Git for Windows or GitHub CLI with access to this repository. You can also open Releases in your browser.",
-    )?;
-    let token = token.trim();
-    ensure!(
-        token.bytes().all(|byte| byte.is_ascii_graphic()),
-        "The stored GitHub credential is invalid."
-    );
+    let token = if option_env!("MEME_SOUNDBOARD_PRIVATE_UPDATES") == Some("1") {
+        let token = github_token().context(
+            "Sign in to Git for Windows or GitHub CLI with access to this repository. You can also open Releases in your browser.",
+        )?;
+        ensure!(
+            token.trim().bytes().all(|byte| byte.is_ascii_graphic()),
+            "The stored GitHub credential is invalid."
+        );
+        Some(token)
+    } else {
+        None
+    };
     let curl = system_curl().context("Can't locate Windows' GitHub download helper.")?;
-    // curl drops Authorization when a release asset redirects to another origin.
-    // Read that header from a pipe so the token is absent from the command line.
-    let mut child = Command::new(curl)
+    let mut command = Command::new(curl);
+    command
         .args([
             "--disable",
             "--silent",
@@ -232,8 +235,6 @@ fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Ve
             "--user-agent",
             concat!("Meme-Soundboard/", env!("CARGO_PKG_VERSION")),
             "--header",
-            "@-",
-            "--header",
             "X-GitHub-Api-Version: 2026-03-10",
             "--write-out",
             "%{stderr}%{http_code}\n",
@@ -243,17 +244,29 @@ fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Ve
         .arg("--max-filesize")
         .arg(limit.to_string())
         .arg(format!("https://api.github.com/{endpoint}"))
-        .stdin(Stdio::piped())
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
         .stdout(output)
         .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW)
+        .creation_flags(CREATE_NO_WINDOW);
+    if token.is_some() {
+        // curl drops Authorization on cross-origin redirects. Keep the token off the command line.
+        command.args(["--header", "@-"]).stdin(Stdio::piped());
+    } else {
+        command.stdin(Stdio::null());
+    }
+    let mut child = command
         .spawn()
         .context("Can't start the GitHub connection.")?;
-    let header_sent = child
-        .stdin
-        .take()
-        .context("Can't send GitHub authentication.")?
-        .write_all(format!("Authorization: Bearer {token}\n").as_bytes());
+    let header_sent = if let Some(token) = &token {
+        child
+            .stdin
+            .take()
+            .context("Can't send GitHub authentication.")?
+            .write_all(format!("Authorization: Bearer {}\n", token.trim()).as_bytes())
+    } else {
+        Ok(())
+    };
     let response = child
         .wait_with_output()
         .context("Can't read the GitHub response.")?;
@@ -266,8 +279,13 @@ fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Ve
             header_sent.context("Can't send GitHub authentication.")?;
             Ok(response.stdout)
         }
-        Some(401 | 403) => {
+        Some(401 | 403) if token.is_some() => {
             bail!("Sign in to GitHub with an account that can read the private repository.")
+        }
+        Some(403 | 429) => {
+            bail!(
+                "GitHub is limiting update checks. Try again later or open Releases in your browser."
+            )
         }
         Some(404) => {
             bail!("GitHub could not find a release you can access. Open Releases in your browser.")

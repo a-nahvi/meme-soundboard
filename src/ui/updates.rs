@@ -36,10 +36,7 @@ impl Updates {
                 &format!("Installed version {}", releases::INSTALLED_VERSION),
             );
             card_content(ui, |ui| {
-                let Some(repository) = releases::REPOSITORY else {
-                    design::muted(ui, "Configure a GitHub repository to check for updates.");
-                    return;
-                };
+                let repository = releases::REPOSITORY;
                 ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(

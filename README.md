@@ -1,61 +1,79 @@
+<img src="assets/app.png" width="60" height="60" alt="">
+
 # Meme Soundboard
 
-An English-language soundboard for Windows 11 with a local clip library. It mixes your physical microphone and clips into a virtual recording device for games and voice apps. Use headphones to preview clips privately.
+Play clips through your microphone in games and voice chat. Meme Soundboard is a Windows 11 desktop app written in Rust. It keeps your library on your PC and lets you preview clips through headphones.
 
-## Install and set up
+**[Download for Windows 11 (x64)](https://github.com/a-nahvi/meme-soundboard/releases/latest/download/MemeSoundboard-Setup-x64.exe)** · [Release notes](https://github.com/a-nahvi/meme-soundboard/releases) · [Report a bug](https://github.com/a-nahvi/meme-soundboard/issues/new/choose)
 
-1. Run `MemeSoundboard-Setup-x64.exe`. Pick a folder your Windows account can write to. The default is `%LOCALAPPDATA%\Programs\Meme Soundboard`.
-2. For voice chat, select **Install Soundboard Microphone** during interactive setup. Setup includes the original [Virtual Audio Cable Lite 4.71 package](https://vac.muzychenko.net/en/download.htm) by Eugene Muzychenko and opens its installer. Approve Windows administrator access and review the vendor's license. The Lite package is for personal home use.
-3. Open **Audio devices** and select your physical microphone and headphone output. Turn off **Local playback only**, then set **Voice output** to **Soundboard Microphone** or leave it on **Detect virtual output**. Use the refresh icon if you just installed the driver.
-4. In the game or voice app, select the recording device shown in **Audio devices**, usually **Line 1 (Virtual Audio Cable)**. If the game follows the Windows communications input, choose that recording device as the communications input and select your physical microphone explicitly in Soundboard. Check your usual speakers or headphones in Windows Sound settings after installing the driver.
-5. Run **Preview test** to check headphones and **Send test to chat** to check the virtual input. Use the destination app's microphone test to check the clip and your voice together.
+[![Windows checks](https://github.com/a-nahvi/meme-soundboard/actions/workflows/windows.yml/badge.svg?branch=main)](https://github.com/a-nahvi/meme-soundboard/actions/workflows/windows.yml)
 
-With **open mic** or **voice activity** enabled in the destination app, you can play a clip mid-sentence. With **Push-to-Talk** enabled there, hold the app's own talk key for the whole clip. If a destination's noise filter swallows sound effects, check its microphone sensitivity and suppression settings.
+## Quick start
 
-For headphone or speaker playback, turn on **Local playback only** in **Audio devices**. Existing VB-CABLE and other virtual audio devices can also be selected as **Voice output**. Select the corresponding recording endpoint in the game.
+1. Run the Windows installer. The default location is `%LOCALAPPDATA%\Programs\Meme Soundboard`.
+2. Open **Library** and select **Import audio**, or use the folder button and drop your clips there.
+3. Select **Play** to use the current audio route, or select the headphones icon to preview a clip locally.
 
-## Use
+For speakers or headphones, enable **Local playback only** in **Audio devices**.
 
-- **Library** supports MP3, WAV, OGG Vorbis, FLAC, and M4A/AAC clips up to 24 MB and two minutes. Use **Import audio**, or click the folder icon and copy clips directly into the folder. Soundboard picks up new files automatically.
-- Use the play icon and the Stop square to play or stop a clip. The headphones icon previews it locally. Click or drag the progress bar to seek within the current clip.
-- Click the scissors icon to set the start and end. Soundboard previews the selection on headphones or speakers when you finish editing a boundary. **Preview** repeats it from the selected start. **Save trim** applies the selection to Library playback and shortcuts and previews the saved clip locally. **Revert** restores the full clip. The library keeps the original audio.
-- Click **Set shortcut** next to any clip, press a key or combination such as `F8` or `Alt+1`, then select **Save shortcut**. Shortcuts work on the desktop and in other apps while Soundboard is running. Saved digit shortcuts also accept the corresponding number-pad key with Num Lock on when that key is available. Type `Numpad1` using **Type manually** to assign it specifically.
-- **Stop** stops playback. Its default shortcut is `Ctrl+Alt+0`, which you can change in **Shortcuts**. If Windows or another clip already uses a combination, choose a different one.
-- **Mix** adjusts mic and clip volumes individually. The optional microphone gate uses a configurable signal threshold and release time. It leaves clip playback active whether or not you are speaking.
-- The close button sends Soundboard to the Windows tray by default. Open it again from the taskbar or the tray. Use **Quit** from the tray menu to exit. Enable **Start Soundboard in the tray when I sign in to Windows** in Setup to have shortcuts ready after sign-in. You can manage this in **Windows startup settings** from the **Shortcuts** tab.
-- In **Appearance**, you can turn off **Close to tray** or set the theme to **System**, **Light**, or **Dark**. **System** follows the Windows app theme.
+### Send clips to voice chat
 
-## Upgrade
+1. Select **Install Soundboard Microphone** during setup, or use an existing virtual audio device such as VB-CABLE. The optional setup installs the original Virtual Audio Cable Lite package for personal, noncommercial use. [Virtual Audio Cable](https://vac.muzychenko.net/en/download.htm)
+2. In **Audio devices**, select your physical microphone and headphones, turn off **Local playback only**, and choose the virtual cable as **Voice output**. Refresh the device list if you just installed it.
+3. In the game or chat app, choose the corresponding recording device as its microphone. With VAC Lite, it is typically **Line 1 (Virtual Audio Cable)**.
+4. Use **Send test to chat** and the destination app’s microphone test to confirm the route.
 
-Run the new setup over the existing installation. Setup closes the copy running from that folder, including when it's in the tray, then updates it in place. The `data` folder beside it holds your clips, favorites, shortcuts, settings, and diagnostic log.
+For destinations using voice activity, clips can play while you talk. For destinations using Push-to-Talk, hold their talk key while the clip plays.
 
-Deliver **dist/MemeSoundboard-Setup-x64.exe** with every release. Keep the existing Inno Setup app ID and previous-directory detection so Setup can upgrade the installed copy. Before handing off the installer, verify that it closes a running previous version, updates it in its existing folder, and preserves the data folder.
+## Library and controls
 
-Open **Updates** from the sidebar to see your installed version and check for new stable releases. Sign in to Git for Windows or GitHub CLI with an account that can read the private repository. Soundboard reuses those GitHub credentials for the release request. You can also select **Open GitHub releases** and use your browser sign-in. Soundboard verifies the GitHub asset's size and SHA-256 digest before opening Setup in your existing installation folder.
+- Import MP3, WAV, Ogg Vorbis, FLAC, and M4A/AAC files up to 24 MiB and two minutes each. The library detects files added to the clips folder.
+- Assign global shortcuts to individual clips. Set a separate Stop shortcut in **Shortcuts**. The default is `Ctrl+Alt+0`.
+- Seek from the progress bar. Use **Trim** to preview and save a range, then use **Revert** to restore full playback. The original audio stays in the library.
+- Use **Mix** to set separate clip and microphone levels and configure the optional microphone gate.
+- Keep Soundboard in the tray for shortcuts while you play. **Appearance** controls Close to tray and the System, Light, and Dark themes.
 
-Build from a checkout whose `origin` points to the GitHub repository. To configure a build from a source archive, set `MEME_SOUNDBOARD_GITHUB_REPOSITORY` to the `owner/repository` slug before building. Release stable versions with a `v`-prefixed version tag and attach `dist/MemeSoundboard-Setup-x64.exe` to the GitHub Release. The update checker ignores prereleases.
+## Updates and saved data
 
-## Develop
+Open **Updates** from the sidebar and select **Check for updates**. The app reads the latest stable public Release directly from GitHub and checks the installer’s SHA-256 before opening Setup.
 
-Use the stable Rust MSVC toolchain, Visual Studio Build Tools with the Desktop development with C++ workload, and the Windows SDK.
+Setup closes the running copy from the selected installation folder and updates it in place. The `data` folder beside the executable holds clips, saved trims, favorites, shortcuts, settings, and diagnostics.
+
+## Build on Windows
+
+Install the stable Rust MSVC toolchain, Visual Studio Build Tools with **Desktop development with C++**, and the Windows SDK.
 
 ```powershell
 cargo run --locked
-cargo fmt --check
+cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
-cargo build --locked --release
-.\build-installer.ps1 -Iscc 'C:\path\to\ISCC.exe'
 ```
 
-The installer script uses Inno Setup. The x64 build links the Visual C++ runtime statically. CPAL opens Windows WASAPI endpoints, Symphonia decodes audio outside the audio callbacks, and egui renders the desktop window with shadcn-egui components. Imports are decoded on a worker. Device, playback, and import events wake the UI as needed. [shadcn-egui](https://github.com/oetiker/shadcn-egui)
-
-The app embeds selected Iconly artwork and plays its animation once when you hover. It follows the Windows animation preference. To regenerate the atlas from your Iconly Local archive, run the script with Python and Pillow. [Iconly](https://iconly.pro/)
+To build the installer with Inno Setup, run the following command. The output is `dist\MemeSoundboard-Setup-x64.exe`.
 
 ```powershell
-python .\tools\prepare-iconly-atlas.py 'C:\path\to\iconly-local\library'
+.\build-installer.ps1 -Iscc "C:\path\to\ISCC.exe"
 ```
 
-`src/audio.rs` handles device selection, mixing, playback, and resampling. `src/storage.rs` and `src/folder.rs` manage local data and folder notifications. `src/shortcuts.rs` processes global key presses on a Win32 message thread. `src/tray.rs` handles the tray menu. `src/ui/` contains the library, settings, shortcut recorder, and design tokens.
+Builds use the GitHub `origin` as their update source. Source archives default to this project’s repository. Set `MEME_SOUNDBOARD_GITHUB_REPOSITORY` to an `owner/repository` pair to override it. For a private update source, set `MEME_SOUNDBOARD_PRIVATE_UPDATES=1` before building and sign in with Git for Windows or GitHub CLI.
 
-To reproduce an audio issue, include the chosen input and output devices, the destination app and voice mode, whether its mic test receives the test tone, and relevant lines from `data/soundboard.log`. The app does not save microphone recordings.
+Publish a stable `v`-prefixed tag and attach `MemeSoundboard-Setup-x64.exe` to its GitHub Release. Test an in-place upgrade from the previous version before release.
+
+<details>
+<summary>Personal builds with Iconly</summary>
+
+With your licensed Iconly Local archive and Python with Pillow, generate the local atlas and enable `local-iconly` when building. The atlas is generated in `assets/iconly`.
+
+```powershell
+python .\tools\prepare-iconly-atlas.py "C:\path\to\iconly-local\library"
+cargo run --locked --features local-iconly
+```
+
+</details>
+
+## Support and license
+
+For audio or shortcut issues, include the app version, Windows version, playback mode, reproduction steps, and relevant lines from `data\soundboard.log`. [Report an issue](https://github.com/a-nahvi/meme-soundboard/issues/new/choose)
+
+The project source code is licensed under [MIT](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for the bundled driver and icon licenses.

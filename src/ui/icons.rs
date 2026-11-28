@@ -1,26 +1,58 @@
-use eframe::egui::{
-    self, Color32, Context, Id, Rect, Response, TextureHandle, TextureOptions, Ui, Vec2, pos2,
+use eframe::egui::{self, Color32, Rect, Response, Ui, Vec2};
+use shadcn_egui::{
+    components::icon::{Icon as VectorIcon, paint_icon},
+    icons::lucide,
 };
-use std::time::Duration;
+use std::{
+    f32::consts::{PI, TAU},
+    time::Duration,
+};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct Icon {
-    start: usize,
-    frames: usize,
+    vector: VectorIcon,
+    filled_star: bool,
 }
 
 impl Icon {
-    const fn new(start: usize, frames: usize) -> Self {
-        Self { start, frames }
+    const fn new(vector: VectorIcon) -> Self {
+        Self {
+            vector,
+            filled_star: false,
+        }
     }
-}
 
-include!("../../assets/iconly/frames.rs");
-
-#[derive(Clone)]
-struct Atlas {
-    texture: TextureHandle,
-    size: Vec2,
+    pub const LIBRARY: Self = Self::new(lucide::LIBRARY);
+    pub const AUDIO_DEVICES: Self = Self::new(lucide::PLUG);
+    pub const MIX: Self = Self::new(lucide::SLIDERS_HORIZONTAL);
+    pub const KEYBOARD: Self = Self::new(lucide::KEYBOARD);
+    pub const APPEARANCE: Self = Self::new(lucide::PALETTE);
+    pub const DOWNLOAD: Self = Self::new(lucide::DOWNLOAD);
+    pub const DOCUMENT: Self = Self::new(lucide::FILE_TEXT);
+    pub const STOP: Self = Self::new(lucide::SQUARE);
+    pub const MIC: Self = Self::new(lucide::MIC);
+    pub const MIC_OFF: Self = Self::new(lucide::MIC_OFF);
+    pub const WAVEFORM: Self = Self::new(lucide::AUDIO_WAVEFORM);
+    pub const HEADPHONES: Self = Self::new(lucide::HEADPHONES);
+    pub const WARNING: Self = Self::new(lucide::TRIANGLE_ALERT);
+    pub const SUCCESS: Self = Self::new(lucide::CIRCLE_CHECK);
+    pub const CLOSE: Self = Self::new(lucide::X);
+    pub const PLUS: Self = Self::new(lucide::PLUS);
+    pub const FOLDER: Self = Self::new(lucide::FOLDER_OPEN);
+    pub const SEARCH: Self = Self::new(lucide::SEARCH);
+    pub const STAR: Self = Self::new(lucide::STAR);
+    pub const STAR_FILLED: Self = Self {
+        filled_star: true,
+        ..Self::STAR
+    };
+    pub const DELETE: Self = Self::new(lucide::TRASH_2);
+    pub const PLAY: Self = Self::new(lucide::PLAY);
+    pub const RENAME: Self = Self::new(lucide::PENCIL);
+    pub const TRIM: Self = Self::new(lucide::SCISSORS);
+    pub const MUSIC: Self = Self::new(lucide::MUSIC_2);
+    pub const REFRESH: Self = Self::new(lucide::REFRESH_CW);
+    pub const EXTERNAL_LINK: Self = Self::new(lucide::ARROW_UP_RIGHT);
+    pub const CHECK: Self = Self::new(lucide::CHECK);
 }
 
 #[derive(Clone, Copy)]
@@ -29,38 +61,29 @@ struct Hover {
     since: f64,
 }
 
-const ATLAS: &str = "iconly-atlas";
-
-pub(super) fn install(ctx: &Context) {
-    let png = eframe::icon_data::from_png_bytes(include_bytes!("../../assets/iconly/atlas.png"))
-        .expect("The embedded Iconly atlas is a PNG");
-    let size = [png.width as usize, png.height as usize];
-    let pixels = egui::ColorImage::from_rgba_unmultiplied(size, &png.rgba);
-    let texture = ctx.load_texture("Iconly", pixels, TextureOptions::LINEAR);
-    ctx.data_mut(|data| {
-        data.insert_temp(
-            Id::unique(ATLAS),
-            Atlas {
-                texture,
-                size: egui::vec2(png.width as f32, png.height as f32),
-            },
-        );
-    });
-}
-
 pub(super) fn paint(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
-    paint_frame(ui, rect, icon.start, color);
+    if icon.filled_star {
+        let mut mesh = egui::Mesh::default();
+        let center = rect.center();
+        mesh.colored_vertex(center, color);
+        for point in 0..10 {
+            let angle = point as f32 * TAU / 10.0 - PI / 2.0;
+            let radius = rect.width() * if point % 2 == 0 { 0.43 } else { 0.205 };
+            mesh.colored_vertex(center + Vec2::new(angle.cos(), angle.sin()) * radius, color);
+            mesh.add_triangle(0, point + 1, (point + 1) % 10 + 1);
+        }
+        ui.painter().add(egui::Shape::mesh(mesh));
+    } else {
+        paint_icon(ui.painter(), rect, &icon.vector, color, 1.8);
+    }
 }
 
 pub(super) fn paint_hover(ui: &Ui, response: &Response, rect: Rect, icon: Icon, color: Color32) {
-    if ui.style().animation_time == 0.0 {
-        paint(ui, rect, icon, color);
-        return;
-    }
-
+    const DURATION: f64 = 0.32;
     let ctx = ui.ctx();
-    let id = response.id.with("iconly-hover");
-    let hovered = response.hovered()
+    let id = response.id.with("icon-hover");
+    let hovered = ui.style().animation_time > 0.0
+        && response.hovered()
         && response.enabled()
         && ui.input(|input| {
             input
@@ -68,12 +91,6 @@ pub(super) fn paint_hover(ui: &Ui, response: &Response, rect: Rect, icon: Icon, 
                 .hover_pos()
                 .is_some_and(|pos| response.interact_rect.contains(pos))
         });
-    if icon.frames == 1 {
-        let progress = ctx.animate_bool_with_time(id, hovered, 0.15);
-        paint(ui, rect.expand(progress * 0.65), icon, color);
-        return;
-    }
-
     if !hovered {
         ctx.data_mut(|data| data.remove::<Hover>(id));
         paint(ui, rect, icon, color);
@@ -82,90 +99,23 @@ pub(super) fn paint_hover(ui: &Ui, response: &Response, rect: Rect, icon: Icon, 
 
     let now = ui.input(|input| input.time);
     let since = ctx.data_mut(|data| {
-        let state = data.get_temp_mut_or_insert_with(id, || Hover { icon, since: now });
-        if state.icon != icon {
-            *state = Hover { icon, since: now };
+        let hover = data.get_temp_mut_or_insert_with(id, || Hover { icon, since: now });
+        if hover.icon != icon {
+            *hover = Hover { icon, since: now };
         }
-        state.since
+        hover.since
     });
-    let frame = ((now - since) * 1000.0 / FRAME_MS as f64) as usize;
-    if frame + 1 < icon.frames {
-        ctx.request_repaint_after(Duration::from_millis(FRAME_MS as u64));
-    }
-    paint_frame(ui, rect, icon.start + frame.min(icon.frames - 1), color);
-}
-
-fn paint_frame(ui: &Ui, rect: Rect, frame: usize, color: Color32) {
-    let Some(atlas) = ui
-        .ctx()
-        .data(|data| data.get_temp::<Atlas>(Id::unique(ATLAS)))
-    else {
-        return;
+    let progress = ((now - since) / DURATION).clamp(0.0, 1.0) as f32;
+    let lift = if progress < 1.0 {
+        ctx.request_repaint_after(Duration::from_millis(16));
+        (progress * PI).sin()
+    } else {
+        0.0
     };
-    let x = (frame % TILES_PER_ROW * TILE_STRIDE + TILE_PADDING) as f32;
-    let y = (frame / TILES_PER_ROW * TILE_STRIDE + TILE_PADDING) as f32;
-    let uv = Rect::from_min_max(
-        pos2(x / atlas.size.x, y / atlas.size.y),
-        pos2(
-            (x + TILE_SIDE as f32) / atlas.size.x,
-            (y + TILE_SIDE as f32) / atlas.size.y,
-        ),
+    paint(
+        ui,
+        rect.expand(lift * 0.75).translate(egui::vec2(0.0, -lift)),
+        icon,
+        color,
     );
-    ui.painter().image(atlas.texture.id(), rect, uv, color);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn animation_advances_on_hover_and_returns_to_rest() {
-        let ctx = Context::default();
-        install(&ctx);
-        ctx.all_styles_mut(|style| style.animation_time = 0.15);
-        let texture = ctx
-            .data(|data| data.get_temp::<Atlas>(Id::unique(ATLAS)))
-            .unwrap()
-            .texture
-            .id();
-        let draw = |time, events, target: &mut Rect| {
-            let mut output = ctx.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(100.0))),
-                    events,
-                    time: Some(time),
-                    ..Default::default()
-                },
-                |ui| {
-                    let (rect, response) =
-                        ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::click());
-                    *target = rect;
-                    paint_hover(ui, &response, rect, Icon::PLAY, Color32::WHITE);
-                },
-            );
-            output.textures_delta.clear();
-            output
-                .shapes
-                .into_iter()
-                .find_map(|shape| match shape.shape {
-                    egui::Shape::Mesh(mesh) if mesh.texture_id == texture => {
-                        Some(mesh.vertices[0].uv)
-                    }
-                    _ => None,
-                })
-                .unwrap()
-        };
-        let mut target = Rect::NOTHING;
-        let rest = draw(0.0, vec![], &mut target);
-        let enter = egui::Event::PointerMoved(target.center());
-        assert_eq!(draw(0.1, vec![enter.clone()], &mut target), rest);
-        assert_ne!(draw(0.3, vec![], &mut target), rest);
-        let end = draw(2.0, vec![], &mut target);
-        assert_eq!(draw(3.0, vec![], &mut target), end);
-        assert_eq!(draw(3.1, vec![egui::Event::PointerGone], &mut target), rest);
-        assert_eq!(draw(3.2, vec![enter], &mut target), rest);
-
-        ctx.all_styles_mut(|style| style.animation_time = 0.0);
-        assert_eq!(draw(3.4, vec![], &mut target), rest);
-    }
 }

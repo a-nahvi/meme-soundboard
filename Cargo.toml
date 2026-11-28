@@ -1,8 +1,15 @@
 [package]
 name = "meme-soundboard"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2024"
 description = "A Windows soundboard that mixes clips into your voice chat"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/a-nahvi/meme-soundboard"
+publish = false
+
+[features]
+local-iconly = []
 
 [build-dependencies]
 embed-resource = "3.0"
