@@ -1,6 +1,6 @@
 [package]
 name = "meme-soundboard"
-version = "0.4.7"
+version = "0.4.8"
 edition = "2024"
 description = "A Windows soundboard that mixes clips into your voice chat"
 license = "MIT"
@@ -35,3 +35,8 @@ windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_Grap
 codegen-units = 1
 lto = "thin"
 strip = "debuginfo"
+
+[patch.crates-io]
+# egui 0.37.0 with the bidirectional text series, including selection and caret fixes.
+# Remove this pin once the upstream release supports bidirectional text.
+egui = { git = "https://github.com/aiongg/egui.git", rev = "620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0" }

@@ -1,3 +1,4 @@
+use crate::language::Language;
 use anyhow::Result;
 use eframe::egui;
 use std::sync::mpsc::{self, Receiver};
@@ -60,16 +61,11 @@ impl Tray {
         self.icon.is_some()
     }
 
-    pub fn enable(&mut self, enabled: bool) -> Result<()> {
+    pub fn enable(&mut self, enabled: bool, language: Language) -> Result<()> {
         if !enabled {
             self.icon = None;
         } else if self.icon.is_none() {
-            let menu = Menu::with_items(&[
-                &MenuItem::with_id(SHOW_ID, "Open Meme Soundboard", true, None),
-                &MenuItem::with_id(STOP_ID, "Stop playback", true, None),
-                &PredefinedMenuItem::separator(),
-                &MenuItem::with_id(QUIT_ID, "Quit", true, None),
-            ])?;
+            let menu = menu(language)?;
             let logo = crate::window_icon();
             let icon = Icon::from_rgba(logo.rgba, logo.width, logo.height)?;
             self.icon = Some(
@@ -84,4 +80,30 @@ impl Tray {
         }
         Ok(())
     }
+
+    pub fn set_language(&self, language: Language) -> Result<()> {
+        if let Some(icon) = &self.icon {
+            icon.set_menu(Some(Box::new(menu(language)?)));
+        }
+        Ok(())
+    }
+}
+
+fn menu(language: Language) -> Result<Menu> {
+    Ok(Menu::with_items(&[
+        &MenuItem::with_id(
+            SHOW_ID,
+            language.text("Open Meme Soundboard", "باز کردن Meme Soundboard"),
+            true,
+            None,
+        ),
+        &MenuItem::with_id(
+            STOP_ID,
+            language.text("Stop playback", "توقف پخش"),
+            true,
+            None,
+        ),
+        &PredefinedMenuItem::separator(),
+        &MenuItem::with_id(QUIT_ID, language.text("Quit", "خروج"), true, None),
+    ])?)
 }

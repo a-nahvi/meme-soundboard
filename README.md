@@ -32,6 +32,7 @@ For destinations using voice activity, clips can play while you talk. For destin
 - Seek from the progress bar. Use **Trim** to preview and save a range, then use **Revert** to restore full playback. The original audio stays in the library.
 - Use **Mix** to set separate clip and microphone levels and configure the optional microphone gate.
 - Keep Soundboard in the tray for shortcuts while you play. **Appearance** controls Close to tray and the System, Light, and Dark themes.
+- Choose **Language** in **Appearance** to switch between English (left to right) and Persian (right to left). The change applies immediately and is saved in your settings.
 
 ## Updates and saved data
 
@@ -58,8 +59,6 @@ To build the installer with Inno Setup, run the following command. The output is
 
 Builds use the GitHub `origin` as their update source. Source archives default to this project’s repository. Set `MEME_SOUNDBOARD_GITHUB_REPOSITORY` to an `owner/repository` pair to override it. For a private update source, set `MEME_SOUNDBOARD_PRIVATE_UPDATES=1` before building and sign in with Git for Windows or GitHub CLI.
 
-Publish a stable `v`-prefixed tag and attach `MemeSoundboard-Setup-x64.exe` to its GitHub Release. Test an in-place upgrade from the previous version before release.
-
 <details>
 <summary>Build the installer with Iconly</summary>
 
@@ -72,6 +71,13 @@ cargo run --locked --features local-iconly
 ```
 
 </details>
+
+## Publish a release
+
+1. Set the version in `Cargo.toml`, `Cargo.lock`, `assets/app.rc`, and `installer.iss`. Build the official installer with `-WithIconly` and test an in-place upgrade from the previous release.
+2. Push the release commit to `main`. Check that the licensed Iconly files and generated atlas stay in the ignored local `assets/iconly/` directory.
+3. Create a stable GitHub Release for that commit using a `v`-prefixed tag. Attach `MemeSoundboard-Setup-x64.exe` and mark the release as latest once its asset is ready.
+4. Verify that the previous version finds the release in **Updates** and that the published download matches the installer.
 
 ## Support and license
 

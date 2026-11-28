@@ -1,13 +1,11 @@
 use super::{App, LIBRARY_FILE, clip_count, design, icons::Icon, shortcut_dialog::ShortcutTarget};
 use crate::{audio::ClipProgress, storage::Clip};
 use eframe::egui::{
-    self, Align, CornerRadius, Frame, Layout, Margin, RichText, Sense, Stroke, Ui, UiBuilder, Vec2,
+    self, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui, UiBuilder, Vec2,
 };
 use shadcn_egui::components::{
     badge::{Badge, BadgeVariant},
-    button::{Button, ButtonSize, ButtonVariant},
-    dialog::{Dialog, footer},
-    input::Input,
+    button::{ButtonSize, ButtonVariant},
 };
 use std::{fs, process::Command};
 
@@ -52,16 +50,17 @@ pub(super) struct ClipDetails {
 
 impl App {
     pub(super) fn library(&mut self, ui: &mut Ui) {
+        let language = self.settings.language;
         ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                design::title(ui, "Library");
-                design::muted(ui, clip_count(self.clips.len()));
+            ui.with_layout(design::column(ui), |ui| {
+                design::title(ui, language.text("Library", "کتابخانه"));
+                design::muted(ui, clip_count(self.clips.len(), language));
             });
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.with_layout(design::end_row(ui), |ui| {
                 let label = if self.importing {
-                    "Importing…"
+                    language.text("Importing…", "در حال وارد کردن…")
                 } else {
-                    "Import audio"
+                    language.text("Import audio", "وارد کردن صدا")
                 };
                 if ui
                     .add_enabled(
@@ -74,23 +73,23 @@ impl App {
                 {
                     self.import_files(ui.ctx());
                 }
+                let open_folder = language.text("Open clips folder", "باز کردن پوشهٔ کلیپ‌ها");
                 if ui
                     .add(
-                        design::toolbar_button(
-                            "Open clips folder",
-                            Icon::FOLDER,
-                            ButtonVariant::Outline,
-                        )
-                        .size(ButtonSize::IconLg),
+                        design::toolbar_button(open_folder, Icon::FOLDER, ButtonVariant::Outline)
+                            .size(ButtonSize::IconLg),
                     )
-                    .on_hover_text("Open clips folder")
+                    .on_hover_text(open_folder)
                     .clicked()
                 {
                     let folder = self.store.clips_dir();
                     if let Err(err) = fs::create_dir_all(&folder)
                         .and_then(|()| Command::new("explorer.exe").arg(folder).spawn())
                     {
-                        self.error(format!("Couldn't open the clips folder. {err}"));
+                        self.error(
+                            format!("Couldn't open the clips folder. {err}"),
+                            "باز کردن پوشهٔ کلیپ‌ها ممکن نشد.",
+                        );
                     }
                 }
             });
@@ -104,23 +103,29 @@ impl App {
         let p = design::palette(ui);
         ui.horizontal(|ui| {
             design::icon(ui, Icon::SEARCH, 16.0, p.muted_foreground);
-            let search = ui.add(
-                Input::new(&mut self.filter)
-                    .hint("Find a clip…")
-                    .max_width(300.0),
+            let search = design::text_input(
+                ui,
+                &mut self.filter,
+                language.text("Find a clip…", "جست‌وجوی کلیپ…"),
+                300.0,
             );
             if search.changed() {
                 self.update_filter();
             }
             if !self.filter.is_empty()
-                && design::icon_button(ui, "Clear search", Icon::CLOSE, ButtonVariant::Ghost)
-                    .clicked()
+                && design::icon_button(
+                    ui,
+                    language.text("Clear search", "پاک کردن جست‌وجو"),
+                    Icon::CLOSE,
+                    ButtonVariant::Ghost,
+                )
+                .clicked()
             {
                 self.filter.clear();
                 self.update_filter();
                 search.request_focus();
             }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.with_layout(design::end_row(ui), |ui| {
                 let variant = if self.favorites {
                     ButtonVariant::Secondary
                 } else {
@@ -131,12 +136,16 @@ impl App {
                 } else {
                     Icon::STAR
                 };
-                let filter = ui.add(design::toolbar_button("Favorites", icon, variant));
+                let filter = ui.add(design::toolbar_button(
+                    language.text("Favorites", "علاقه‌مندی‌ها"),
+                    icon,
+                    variant,
+                ));
                 if filter
                     .on_hover_text(if self.favorites {
-                        "Show all clips"
+                        language.text("Show all clips", "نمایش همهٔ کلیپ‌ها")
                     } else {
-                        "Show favorite clips"
+                        language.text("Show favorite clips", "نمایش کلیپ‌های موردعلاقه")
                     })
                     .clicked()
                 {
@@ -239,11 +248,12 @@ impl App {
                 self.clips = updated;
                 self.update_filter();
             }
-            Err(err) => self.error(err.to_string()),
+            Err(err) => self.error(err.to_string(), "ذخیرهٔ علاقه‌مندی ممکن نشد."),
         }
     }
 
     pub(super) fn show_clip_details(&mut self, ctx: &egui::Context) {
+        let language = self.settings.language;
         let Some(mut details) = self.clip_details.take() else {
             return;
         };
@@ -258,22 +268,24 @@ impl App {
         let mut submitted = false;
         let mut cancelled = false;
         if matches!(details.edit, ClipEdit::Delete) {
-            let description = format!("“{}” will be removed from the clips folder.", clip.name);
-            Dialog::new("delete-clip", "Delete clip?")
-                .description(&description)
-                .width(416.0)
-                .show(ctx, &mut open, |ui| {
+            let name = &clip.name;
+            let description = language.text(
+                format!("“{name}” will be removed from the clips folder."),
+                format!("«{name}» از پوشهٔ کلیپ‌ها حذف می‌شود."),
+            );
+            design::dialog(
+                ctx,
+                "delete-clip",
+                language.text("Delete clip?", "کلیپ حذف شود؟"),
+                416.0,
+                &mut open,
+                |ui| {
+                    design::muted(ui, description);
                     render_error(ui, details.error.as_deref());
-                    footer(ui, |ui| {
-                        if ui
-                            .add(Button::new("Keep clip").variant(ButtonVariant::Outline))
-                            .clicked()
-                        {
-                            cancelled = true;
-                        }
+                    ui.with_layout(design::end_row(ui), |ui| {
                         if ui
                             .add(design::toolbar_button(
-                                "Delete",
+                                language.text("Delete", "حذف"),
                                 Icon::DELETE,
                                 ButtonVariant::Destructive,
                             ))
@@ -281,40 +293,72 @@ impl App {
                         {
                             submitted = true;
                         }
-                    });
-                });
-        } else {
-            Dialog::new("clip-details", "Rename clip")
-                .width(416.0)
-                .show(ctx, &mut open, |ui| {
-                    ui.vertical(|ui| {
-                        let name = ui.label("Name");
-                        ui.add(Input::new(&mut details.name).max_width(f32::INFINITY))
-                            .labelled_by(name.id);
-                        if let Some(credit) = &source {
-                            design::muted(ui, credit.as_str());
+                        if ui
+                            .add(design::action_button(
+                                language.text("Keep clip", "نگه داشتن کلیپ"),
+                                ButtonVariant::Outline,
+                            ))
+                            .clicked()
+                        {
+                            cancelled = true;
                         }
-                        render_error(ui, details.error.as_deref());
                     });
-                    footer(ui, |ui| {
-                        if ui.add(Button::new("Rename file")).clicked() {
+                },
+            );
+        } else {
+            design::dialog(
+                ctx,
+                "clip-details",
+                language.text("Rename clip", "تغییر نام کلیپ"),
+                416.0,
+                &mut open,
+                |ui| {
+                    let name = ui.label(language.text("Name", "نام"));
+                    design::text_input(ui, &mut details.name, "", f32::INFINITY)
+                        .labelled_by(name.id);
+                    if let Some(credit) = &source {
+                        design::muted(ui, credit.as_str());
+                    }
+                    render_error(ui, details.error.as_deref());
+                    ui.with_layout(design::end_row(ui), |ui| {
+                        if ui
+                            .add(design::action_button(
+                                language.text("Rename file", "تغییر نام فایل"),
+                                ButtonVariant::Default,
+                            ))
+                            .clicked()
+                        {
                             submitted = true;
                         }
                     });
-                });
+                },
+            );
         }
 
         if submitted {
-            let (result, message) = match details.edit {
-                ClipEdit::Delete => (self.remove_clip(&details.id), "Clip deleted"),
-                ClipEdit::Rename => (self.rename_clip(&details.id, &details.name), "Clip renamed"),
+            let (result, english, persian, failure) = match details.edit {
+                ClipEdit::Delete => (
+                    self.remove_clip(&details.id),
+                    "Clip deleted",
+                    "کلیپ حذف شد",
+                    "حذف کلیپ ممکن نشد. گزارش عیب‌یابی را ببینید.",
+                ),
+                ClipEdit::Rename => (
+                    self.rename_clip(&details.id, &details.name),
+                    "Clip renamed",
+                    "نام کلیپ تغییر کرد",
+                    "تغییر نام ممکن نشد. یک نام معتبر و یکتا وارد کنید یا گزارش عیب‌یابی را ببینید.",
+                ),
             };
             match result {
                 Ok(()) => {
-                    self.message(message);
+                    self.message(english, persian);
                     open = false;
                 }
-                Err(err) => details.error = Some(err.to_string()),
+                Err(err) => {
+                    self.store.log(&format!("{err:#}"));
+                    details.error = Some(language.text(err.to_string(), failure.to_owned()));
+                }
             }
         }
         if open && !cancelled {
@@ -332,6 +376,7 @@ fn clip_row(
     playback: RowPlayback,
     [first, last]: [bool; 2],
 ) -> Option<LibraryAction> {
+    let language = design::language(ui);
     let active = playback.chat || playback.preview;
     let p = design::palette(ui);
     let (rect, _) =
@@ -358,27 +403,33 @@ fn clip_row(
         UiBuilder::new()
             .id_salt(&clip.id)
             .max_rect(rect.shrink2(egui::vec2(ROW_INSET, 0.0)))
-            .layout(Layout::left_to_right(Align::Center)),
+            .layout(design::row(ui)),
     );
     let mut action = None;
     let (play_icon, play_label, play_action) = if active {
         (
             Icon::STOP,
-            "Stop clip",
+            language.text("Stop clip", "توقف کلیپ"),
             LibraryAction::Stop(i, !playback.chat),
         )
     } else {
         (
             Icon::PLAY,
-            "Play into voice chat",
+            language.text("Play into voice chat", "پخش در گفت‌وگوی صوتی"),
             LibraryAction::Play(i, false),
         )
     };
-    let accessible_play_label = if active {
-        format!("Stop {}", clip.name)
-    } else {
-        format!("Play {} into voice chat", clip.name)
+    let name = &clip.name;
+    let accessible_play_label = match (active, language.is_rtl()) {
+        (true, false) => format!("Stop {name}"),
+        (false, false) => format!("Play {name} into voice chat"),
+        (true, true) => format!("توقف «{name}»"),
+        (false, true) => format!("پخش «{name}» در گفت‌وگوی صوتی"),
     };
+    let missing_file = language.text(
+        "File missing from clips folder",
+        "فایل در پوشهٔ کلیپ‌ها پیدا نشد",
+    );
     let play = design::toolbar_button(
         &accessible_play_label,
         play_icon,
@@ -392,7 +443,7 @@ fn clip_row(
     if row
         .add_enabled(active || !missing, play)
         .on_hover_text(play_label)
-        .on_disabled_hover_text("File missing from clips folder")
+        .on_disabled_hover_text(missing_file)
         .clicked()
     {
         action = Some(play_action);
@@ -418,52 +469,59 @@ fn clip_row(
         .map(|trim| trim.duration_ms())
         .filter(|&duration| duration != 0);
     if playback.progress.is_some() || missing || trimmed_duration.is_some() {
-        row.allocate_ui_with_layout(
-            Vec2::new(text_width, 36.0),
-            Layout::top_down(Align::Min),
-            |ui| {
-                ui.set_width(text_width);
-                ui.spacing_mut().item_spacing.y = 3.0;
-                ui.add(label.truncate()).on_hover_text(&clip.name);
-                if let Some((progress, preview)) = playback.progress {
-                    if let Some(elapsed_ms) = design::timeline(ui, progress, text_width.min(320.0))
-                    {
-                        action = Some(LibraryAction::Seek(i, preview, elapsed_ms));
-                    }
-                } else if missing {
-                    ui.label(
-                        RichText::new("File missing")
-                            .size(11.0)
-                            .color(p.muted_foreground),
-                    );
-                } else if let Some(duration) = trimmed_duration {
-                    ui.label(
-                        RichText::new(design::seconds_label(duration))
-                            .size(11.0)
-                            .color(p.muted_foreground),
-                    )
-                    .on_hover_text("Saved trim duration");
+        row.allocate_ui_with_layout(Vec2::new(text_width, 36.0), design::column(&row), |ui| {
+            ui.set_width(text_width);
+            ui.spacing_mut().item_spacing.y = 3.0;
+            ui.add(label.truncate()).on_hover_text(&clip.name);
+            if let Some((progress, preview)) = playback.progress {
+                if let Some(elapsed_ms) = design::timeline(ui, progress, text_width.min(320.0)) {
+                    action = Some(LibraryAction::Seek(i, preview, elapsed_ms));
                 }
-            },
-        );
+            } else if missing {
+                ui.label(
+                    RichText::new(language.text("File missing", "فایل پیدا نشد"))
+                        .size(11.0)
+                        .color(p.muted_foreground),
+                );
+            } else if let Some(duration) = trimmed_duration {
+                ui.label(
+                    RichText::new(design::seconds_label(duration))
+                        .size(11.0)
+                        .color(p.muted_foreground),
+                )
+                .on_hover_text(language.text("Saved trim duration", "مدت برش ذخیره‌شده"));
+            }
+        });
     } else {
         design::column_label(&mut row, text_width, 28.0, label).on_hover_text(&clip.name);
     }
 
-    row.with_layout(Layout::right_to_left(Align::Center), |ui| {
+    row.with_layout(design::end_row(&row), |ui| {
         ui.spacing_mut().item_spacing.x = ACTION_GAP;
-        if design::icon_button(ui, "Delete clip", Icon::DELETE, ButtonVariant::Destructive)
-            .clicked()
+        if design::icon_button(
+            ui,
+            language.text("Delete clip", "حذف کلیپ"),
+            Icon::DELETE,
+            ButtonVariant::Destructive,
+        )
+        .clicked()
         {
             action = Some(LibraryAction::Edit(i, ClipEdit::Delete));
         }
-        if design::icon_button(ui, "Rename clip", Icon::RENAME, ButtonVariant::Ghost).clicked() {
+        if design::icon_button(
+            ui,
+            language.text("Rename clip", "تغییر نام کلیپ"),
+            Icon::RENAME,
+            ButtonVariant::Ghost,
+        )
+        .clicked()
+        {
             action = Some(LibraryAction::Edit(i, ClipEdit::Rename));
         }
         let trim_label = if clip.trim.is_some() {
-            "Edit saved trim"
+            language.text("Edit saved trim", "ویرایش برش ذخیره‌شده")
         } else {
-            "Trim clip"
+            language.text("Trim clip", "برش کلیپ")
         };
         if ui
             .add_enabled(
@@ -488,11 +546,15 @@ fn clip_row(
             action = Some(LibraryAction::Favorite(i));
         }
         let (preview_icon, preview_label, preview_variant) = if playback.preview {
-            (Icon::STOP, "Stop preview", ButtonVariant::Secondary)
+            (
+                Icon::STOP,
+                language.text("Stop preview", "توقف پیش‌شنوی"),
+                ButtonVariant::Secondary,
+            )
         } else {
             (
                 Icon::HEADPHONES,
-                "Preview on headphones",
+                language.text("Preview on headphones", "پیش‌شنوی با هدفون"),
                 ButtonVariant::Ghost,
             )
         };
@@ -503,7 +565,7 @@ fn clip_row(
                     .size(ButtonSize::IconSm),
             )
             .on_hover_text(preview_label)
-            .on_disabled_hover_text("File missing from clips folder")
+            .on_disabled_hover_text(missing_file)
             .clicked()
         {
             action = Some(if playback.preview {
@@ -514,7 +576,7 @@ fn clip_row(
         }
         ui.allocate_ui_with_layout(
             Vec2::new(shortcut_width, ACTION_SIZE),
-            Layout::right_to_left(Align::Center),
+            design::end_row(ui),
             |ui| {
                 ui.set_min_width(shortcut_width);
                 if playback_shortcut_button(ui, clip.hotkey.as_deref(), registered, Some(compact))
@@ -531,7 +593,7 @@ fn clip_row(
         {
             ui.allocate_ui_with_layout(
                 Vec2::new(FORMAT_WIDTH, ACTION_SIZE),
-                Layout::right_to_left(Align::Center),
+                design::end_row(ui),
                 |ui| {
                     ui.set_min_width(FORMAT_WIDTH);
                     ui.add(Badge::new(format).variant(BadgeVariant::Outline));
@@ -543,8 +605,9 @@ fn clip_row(
 }
 
 fn favorite_button(ui: &mut Ui, favorite: bool) -> egui::Response {
+    let language = design::language(ui);
     if favorite {
-        let label = "Remove favorite";
+        let label = language.text("Remove favorite", "حذف از علاقه‌مندی‌ها");
         let color = design::favorite_color(ui);
         ui.add(
             design::toolbar_button(label, Icon::STAR_FILLED, ButtonVariant::Secondary)
@@ -553,7 +616,12 @@ fn favorite_button(ui: &mut Ui, favorite: bool) -> egui::Response {
         )
         .on_hover_text(label)
     } else {
-        design::icon_button(ui, "Add favorite", Icon::STAR, ButtonVariant::Ghost)
+        design::icon_button(
+            ui,
+            language.text("Add favorite", "افزودن به علاقه‌مندی‌ها"),
+            Icon::STAR,
+            ButtonVariant::Ghost,
+        )
     }
 }
 
@@ -567,17 +635,24 @@ fn playback_shortcut_button(
     registered: bool,
     row_compact: Option<bool>,
 ) -> egui::Response {
+    let language = design::language(ui);
     let compact = row_compact.unwrap_or_default();
     let key = key.filter(|value| !value.is_empty());
     let icon_only = row_compact.is_some() && (key.is_none() || !registered);
     let (label, tip, icon) = match key {
         Some(value) if !registered => (
             if icon_only {
-                format!("Fix shortcut ({value})")
+                language.text(
+                    format!("Fix shortcut ({value})"),
+                    format!("اصلاح میان‌بر ({value})"),
+                )
             } else {
-                "Fix shortcut".into()
+                language.text("Fix shortcut", "اصلاح میان‌بر").into()
             },
-            format!("{value} is unavailable. Choose another shortcut."),
+            language.text(
+                format!("{value} is unavailable. Choose another shortcut."),
+                format!("میان‌بر {value} در دسترس نیست. میان‌بر دیگری انتخاب کنید."),
+            ),
             Icon::WARNING,
         ),
         Some(value) => (
@@ -586,14 +661,22 @@ fn playback_shortcut_button(
             } else if !compact && value.len() <= 16 {
                 value.replace('+', " + ")
             } else {
-                "Shortcut".into()
+                language.text("Shortcut", "میان‌بر").into()
             },
-            format!("Change shortcut ({value})"),
+            language.text(
+                format!("Change shortcut ({value})"),
+                format!("تغییر میان‌بر ({value})"),
+            ),
             Icon::KEYBOARD,
         ),
         None => (
-            "Set shortcut".into(),
-            "Assign a global playback shortcut".into(),
+            language.text("Set shortcut", "تنظیم میان‌بر").into(),
+            language
+                .text(
+                    "Assign a global playback shortcut",
+                    "تعیین میان‌بر سراسری پخش",
+                )
+                .into(),
             Icon::KEYBOARD,
         ),
     };
@@ -608,20 +691,31 @@ fn playback_shortcut_button(
 
 fn empty(ui: &mut Ui, filtered: bool, favorites: bool) {
     let p = design::palette(ui);
+    let language = design::language(ui);
     let (title, hint, icon) = if !filtered {
         (
-            "No clips yet",
-            "Import audio or drop files into the clips folder.",
+            language.text("No clips yet", "هنوز کلیپی ندارید"),
+            language.text(
+                "Import audio or drop files into the clips folder.",
+                "صدا وارد کنید یا فایل‌ها را در پوشهٔ کلیپ‌ها قرار دهید.",
+            ),
             Icon::MUSIC,
         )
     } else if favorites {
         (
-            "No favorite clips here",
-            "Star a clip in Library or clear your filter.",
+            language.text("No favorite clips here", "کلیپ موردعلاقه‌ای پیدا نشد"),
+            language.text(
+                "Star a clip in Library or clear your filter.",
+                "به کلیپی در کتابخانه ستاره بدهید یا فیلتر را پاک کنید.",
+            ),
             Icon::STAR,
         )
     } else {
-        ("No matching clips", "Try a different name.", Icon::SEARCH)
+        (
+            language.text("No matching clips", "کلیپی پیدا نشد"),
+            language.text("Try a different name.", "نام دیگری را جست‌وجو کنید."),
+            Icon::SEARCH,
+        )
     };
     design::panel(ui)
         .inner_margin(Margin::symmetric(14, 25))

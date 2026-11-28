@@ -4,13 +4,12 @@ use super::{
 };
 use crate::{
     audio::{Endpoint, Source},
+    language::Language,
     storage::{Appearance, Settings},
 };
-use eframe::egui::{self, Align, Layout, Margin, RichText, Ui};
+use eframe::egui::{self, Margin, RichText, Ui};
 use shadcn_egui::components::{
     button::{ButtonSize, ButtonVariant},
-    card::{Card, CardSize, card_content, card_header, card_header_with_action},
-    select::Select,
     slider::Slider,
     switch::Switch,
 };
@@ -21,242 +20,405 @@ const LABEL_WIDTH: f32 = 140.0;
 
 impl App {
     pub(super) fn settings(&mut self, ui: &mut Ui, tab: SettingsTab) {
-        design::title(ui, "Settings");
+        let language = self.settings.language;
+        design::title(ui, language.text("Settings", "تنظیمات"));
         ui.add_space(12.0);
         egui::ScrollArea::vertical()
             .id_salt("settings-scroll")
             .auto_shrink([false, true])
             .content_margin(Margin::same(2))
             .show(ui, |ui| {
-                ui.set_max_width(ui.available_width().min(660.0));
-                match tab {
-                    SettingsTab::Audio => self.routing(ui),
-                    SettingsTab::Mix => self.mix(ui),
-                    SettingsTab::Shortcuts => self.stop_shortcut(ui),
-                    SettingsTab::Appearance => self.appearance(ui),
-                    SettingsTab::Updates => self.updates.ui(ui, &self.store.root),
-                    SettingsTab::Diagnostics => self.diagnostics(ui),
-                };
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width().min(660.0), 0.0),
+                    design::column(ui),
+                    |ui| match tab {
+                        SettingsTab::Audio => self.routing(ui),
+                        SettingsTab::Mix => self.mix(ui),
+                        SettingsTab::Shortcuts => self.stop_shortcut(ui),
+                        SettingsTab::Appearance => self.appearance(ui),
+                        SettingsTab::Updates => self.updates.ui(ui, &self.store),
+                        SettingsTab::Diagnostics => self.diagnostics(ui),
+                    },
+                );
             });
     }
 
     fn routing(&mut self, ui: &mut Ui) {
-        Card::new().size(CardSize::Sm).show(ui, |ui| {
-            card_header_with_action(ui, "Audio devices", "Select the devices for voice chat.", |ui| {
-                if ui.add_enabled(!self.refreshing, design::toolbar_button(
-                    "Refresh audio devices", Icon::REFRESH, ButtonVariant::Outline,
-                ).size(ButtonSize::Icon).busy(self.refreshing))
-                    .on_hover_text("Refresh audio devices").clicked()
-                {
-                    self.refreshing = true;
-                    self.audio.refresh();
-                }
-            });
-            card_content(ui, |ui| {
-                let p = design::palette(ui);
-                let mut changed = switch_row(ui, "Local playback only", &mut self.settings.local_playback_only);
-                if !self.settings.local_playback_only {
-                    changed |= device_row(ui, "Microphone", "System default", &self.devices.inputs,
-                        &mut self.settings.microphone, None, |_| true);
-                    let alias = self.devices.soundboard_microphone.as_ref()
-                        .map(|device| (device.output_id.as_str(), "Soundboard Microphone"));
-                    changed |= device_row(ui, "Voice output", "Detect virtual output", &self.devices.outputs,
-                        &mut self.settings.cable, alias, |device| self.settings.headphones.as_ref() != Some(&device.id));
-                }
-                let cable = if self.settings.local_playback_only {
-                    None
-                } else {
-                    self.settings.cable.as_ref().or(self.route.cable.as_ref())
-                };
-                changed |= device_row(ui, "Headphones", "System default", &self.devices.outputs,
-                    &mut self.settings.headphones, None, |device| !device.is_virtual() && cable != Some(&device.id));
-                if changed { self.settings_changed(ui.ctx()); }
-
-                ui.add_space(9.0);
-                ui.horizontal_wrapped(|ui| {
-                    if ui.add_enabled(self.route.headphones.is_some(), design::toolbar_button(
-                        "Preview test", Icon::HEADPHONES, ButtonVariant::Outline,
-                    )).clicked() {
-                        self.test_tone(true);
-                    }
-                    if ui.add_enabled(self.route.cable.is_some(), design::toolbar_button(
-                        "Send test to chat", Icon::PLAY, ButtonVariant::Outline,
-                    )).clicked() {
-                        self.test_tone(false);
+        let language = self.settings.language;
+        design::settings_card(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width() - 50.0, 0.0),
+                    design::column(ui),
+                    |ui| {
+                        design::section_heading(
+                            ui,
+                            language.text("Audio devices", "دستگاه‌های صوتی"),
+                            language.text(
+                                "Select the devices for voice chat.",
+                                "دستگاه‌های گفت‌وگوی صوتی را انتخاب کنید.",
+                            ),
+                        )
+                    },
+                );
+                ui.with_layout(design::end_row(ui), |ui| {
+                    let refresh =
+                        language.text("Refresh audio devices", "تازه‌کردن فهرست دستگاه‌های صوتی");
+                    if ui
+                        .add_enabled(
+                            !self.refreshing,
+                            design::toolbar_button(refresh, Icon::REFRESH, ButtonVariant::Outline)
+                                .size(ButtonSize::Icon)
+                                .busy(self.refreshing),
+                        )
+                        .on_hover_text(refresh)
+                        .clicked()
+                    {
+                        self.refreshing = true;
+                        self.audio.refresh();
                     }
                 });
-                let hint = if !self.route_checked {
-                    "Checking audio devices…".into()
-                } else if self.settings.local_playback_only {
-                    "Clips play through your headphones or speakers.".into()
-                } else if let Some(mic) = self.devices.soundboard_microphone.as_ref().filter(|mic|
-                    self.route.cable.as_ref() == Some(&mic.output_id)) {
-                    format!("Choose {} as the microphone in your game or chat app.", mic.recording.name)
-                } else if self.route.cable.is_none() {
-                    "Clips play locally. To use voice chat, select Soundboard Microphone in Setup or choose an existing virtual output.".into()
-                } else if self.devices.outputs.iter().any(|device|
-                    Some(&device.id) == self.route.cable.as_ref()
-                    && device.name.to_ascii_lowercase().starts_with("cable input")) {
-                    "Choose CABLE Output as the microphone in your game or chat app.".into()
-                } else {
-                    "Choose the recording side of your virtual audio device in the game or chat app.".into()
-                };
-                ui.label(RichText::new(hint).size(12.0).color(p.muted_foreground));
             });
+            let p = design::palette(ui);
+            let default = language.text("System default", "پیش‌فرض سیستم");
+            let mut changed = switch_row(
+                ui,
+                language.text("Local playback only", "فقط پخش محلی"),
+                &mut self.settings.local_playback_only,
+            );
+            if !self.settings.local_playback_only {
+                changed |= device_row(
+                    ui,
+                    language.text("Microphone", "میکروفون"),
+                    default,
+                    &self.devices.inputs,
+                    &mut self.settings.microphone,
+                    None,
+                    |_| true,
+                );
+                let alias = self
+                    .devices
+                    .soundboard_microphone
+                    .as_ref()
+                    .map(|device| (device.output_id.as_str(), "Soundboard Microphone"));
+                changed |= device_row(
+                    ui,
+                    language.text("Voice output", "خروجی گفت‌وگو"),
+                    language.text("Detect virtual output", "تشخیص خروجی مجازی"),
+                    &self.devices.outputs,
+                    &mut self.settings.cable,
+                    alias,
+                    |device| self.settings.headphones.as_ref() != Some(&device.id),
+                );
+            }
+            let cable = if self.settings.local_playback_only {
+                None
+            } else {
+                self.settings.cable.as_ref().or(self.route.cable.as_ref())
+            };
+            changed |= device_row(
+                ui,
+                language.text("Headphones", "هدفون"),
+                default,
+                &self.devices.outputs,
+                &mut self.settings.headphones,
+                None,
+                |device| !device.is_virtual() && cable != Some(&device.id),
+            );
+            if changed {
+                self.settings_changed(ui.ctx());
+            }
+
+            ui.add_space(9.0);
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(
+                        self.route.headphones.is_some(),
+                        design::toolbar_button(
+                            language.text("Preview test", "آزمایش پیش‌شنوی"),
+                            Icon::HEADPHONES,
+                            ButtonVariant::Outline,
+                        ),
+                    )
+                    .clicked()
+                {
+                    self.test_tone(true);
+                }
+                if ui
+                    .add_enabled(
+                        self.route.cable.is_some(),
+                        design::toolbar_button(
+                            language.text("Send test to chat", "آزمایش خروجی گفت‌وگو"),
+                            Icon::PLAY,
+                            ButtonVariant::Outline,
+                        ),
+                    )
+                    .clicked()
+                {
+                    self.test_tone(false);
+                }
+            });
+            let hint = if !self.route_checked {
+                language
+                    .text("Checking audio devices…", "در حال بررسی دستگاه‌های صوتی…")
+                    .into()
+            } else if self.settings.local_playback_only {
+                language
+                    .text(
+                        "Clips play through your headphones or speakers.",
+                        "کلیپ‌ها از هدفون یا بلندگوی شما پخش می‌شوند.",
+                    )
+                    .into()
+            } else if let Some(mic) = self
+                .devices
+                .soundboard_microphone
+                .as_ref()
+                .filter(|mic| self.route.cable.as_ref() == Some(&mic.output_id))
+            {
+                let name = &mic.recording.name;
+                language.text(
+                    format!("Choose {name} as the microphone in your game or chat app."),
+                    format!("در بازی یا برنامهٔ گفت‌وگو، «{name}» را به‌عنوان میکروفون انتخاب کنید."),
+                )
+            } else if self.route.cable.is_none() {
+                language.text(
+                        "Clips play locally. To use voice chat, select Soundboard Microphone in Setup or choose an existing virtual output.",
+                        "کلیپ‌ها به‌صورت محلی پخش می‌شوند. برای گفت‌وگوی صوتی، Soundboard Microphone را در نصب‌کننده فعال کنید یا یک خروجی مجازی موجود را انتخاب کنید.",
+                    ).into()
+            } else if self.devices.outputs.iter().any(|device| {
+                Some(&device.id) == self.route.cable.as_ref()
+                    && device.name.to_ascii_lowercase().starts_with("cable input")
+            }) {
+                language
+                    .text(
+                        "Choose CABLE Output as the microphone in your game or chat app.",
+                        "در بازی یا برنامهٔ گفت‌وگو، CABLE Output را به‌عنوان میکروفون انتخاب کنید.",
+                    )
+                    .into()
+            } else {
+                language.text("Choose the recording side of your virtual audio device in the game or chat app.", "ورودی ضبط دستگاه صوتی مجازی را در بازی یا برنامهٔ گفت‌وگو انتخاب کنید.").into()
+            };
+            ui.label(RichText::new(hint).size(12.0).color(p.muted_foreground));
         });
     }
 
     fn mix(&mut self, ui: &mut Ui) {
-        Card::new().size(CardSize::Sm).show(ui, |ui| {
-            card_header(ui, "Mix", "Balance your voice and clips.");
-            card_content(ui, |ui| {
-                let settings = &mut self.settings;
-                let mut changed = mix_controls(ui, settings);
-                changed |= switch_row(ui, "Voice-activated mic", &mut self.settings.voice_gate);
-                if self.settings.voice_gate {
-                    let threshold = format!("{:.0} dB", self.settings.threshold_db);
-                    changed |= slider_row(
-                        ui,
-                        "Speaking threshold",
-                        &mut self.settings.threshold_db,
-                        -65.0..=-18.0,
-                        1.0,
-                        &threshold,
-                    );
-                }
-                changed |= switch_row(
+        let language = self.settings.language;
+        design::settings_card(ui, |ui| {
+            design::section_heading(
+                ui,
+                language.text("Mix", "میکس صدا"),
+                language.text(
+                    "Balance your voice and clips.",
+                    "بلندی صدای میکروفون و کلیپ‌ها را تنظیم کنید.",
+                ),
+            );
+            let settings = &mut self.settings;
+            let mut changed = mix_controls(ui, settings);
+            changed |= switch_row(
+                ui,
+                language.text("Voice-activated mic", "فعال‌سازی میکروفون با صدا"),
+                &mut self.settings.voice_gate,
+            );
+            if self.settings.voice_gate {
+                let threshold = format!("{:.0} dB", self.settings.threshold_db);
+                changed |= slider_row(
                     ui,
-                    "Hear played clips locally",
-                    &mut self.settings.monitor_clips,
+                    language.text("Speaking threshold", "آستانهٔ تشخیص صدا"),
+                    &mut self.settings.threshold_db,
+                    -65.0..=-18.0,
+                    1.0,
+                    &threshold,
                 );
-                if changed {
-                    self.settings_changed(ui.ctx());
-                }
-            });
+            }
+            changed |= switch_row(
+                ui,
+                language.text(
+                    "Hear played clips locally",
+                    "شنیدن کلیپ‌ها در هدفون یا بلندگو",
+                ),
+                &mut self.settings.monitor_clips,
+            );
+            if changed {
+                self.settings_changed(ui.ctx());
+            }
         });
     }
 
     fn stop_shortcut(&mut self, ui: &mut Ui) {
-        Card::new().size(CardSize::Sm).show(ui, |ui| {
-            card_header(
+        let language = self.settings.language;
+        design::settings_card(ui, |ui| {
+            design::section_heading(
                 ui,
-                "Shortcuts",
-                "Set playback keys directly on clips in Library.",
+                language.text("Shortcuts", "میان‌برها"),
+                language.text(
+                    "Set playback keys directly on clips in Library.",
+                    "میان‌بر هر کلیپ را در کتابخانه تنظیم کنید.",
+                ),
             );
-            card_content(ui, |ui| {
-                setting_row(ui, |ui| {
-                    ui.label("Stop playback");
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if shortcut_button(
-                            ui,
-                            Some(&self.settings.stop_key),
-                            self.shortcut_registered(STOP_ID),
-                        )
-                        .clicked()
-                        {
-                            self.open_shortcut(ShortcutTarget::Stop, ui.ctx());
-                        }
-                    });
+            setting_row(ui, |ui| {
+                ui.label(language.text("Stop playback", "توقف پخش"));
+                ui.with_layout(design::end_row(ui), |ui| {
+                    if shortcut_button(
+                        ui,
+                        Some(&self.settings.stop_key),
+                        self.shortcut_registered(STOP_ID),
+                    )
+                    .clicked()
+                    {
+                        self.open_shortcut(ShortcutTarget::Stop, ui.ctx());
+                    }
                 });
+            });
+            design::muted(
+                    ui,
+                    language.text("Shortcuts work on the desktop and in other apps while Soundboard is running.", "تا وقتی برنامه باز است، میان‌برها روی دسکتاپ و در برنامه‌های دیگر هم کار می‌کنند."),
+                );
+            if let Some(manager) = &self.shortcuts {
+                let (registered, triggered) = manager.status();
                 design::muted(
                     ui,
-                    "Shortcuts work on the desktop and in other apps while Soundboard is running.",
-                );
-                if let Some(manager) = &self.shortcuts {
-                    let (registered, triggered) = manager.status();
-                    design::muted(
-                        ui,
+                    language.text(
                         format!("{registered} registered · {triggered} triggered this session"),
-                    );
-                }
-                if ui
-                    .add(design::toolbar_button(
-                        "Windows startup settings",
-                        Icon::EXTERNAL_LINK,
-                        ButtonVariant::Outline,
-                    ))
-                    .clicked()
-                {
-                    ui.ctx()
-                        .open_url(egui::OpenUrl::same_tab("ms-settings:startupapps"));
-                }
-            });
+                        format!(
+                            "{registered} میان‌بر ثبت شده · {triggered} بار استفاده در این نشست"
+                        ),
+                    ),
+                );
+            }
+            if ui
+                .add(design::toolbar_button(
+                    language.text("Windows startup settings", "تنظیمات اجرای خودکار ویندوز"),
+                    Icon::EXTERNAL_LINK,
+                    ButtonVariant::Outline,
+                ))
+                .clicked()
+            {
+                ui.ctx()
+                    .open_url(egui::OpenUrl::same_tab("ms-settings:startupapps"));
+            }
         });
     }
 
     fn appearance(&mut self, ui: &mut Ui) {
         const MODES: [Appearance; 3] = [Appearance::System, Appearance::Light, Appearance::Dark];
-        Card::new().size(CardSize::Sm).show(ui, |ui| {
-            card_header(ui, "Appearance", "Theme and window behavior.");
-            card_content(ui, |ui| {
-                let mut mode = MODES
-                    .iter()
-                    .position(|mode| *mode == self.settings.appearance)
-                    .unwrap_or_default();
-                setting_row(ui, |ui| {
-                    let label = ui.label("Theme");
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.add(
-                            Select::new("Theme", &mut mode, &["System", "Light", "Dark"])
-                                .width(160.0),
-                        )
-                        .labelled_by(label.id);
-                    });
+        const LANGUAGES: [Language; 2] = [Language::English, Language::Persian];
+        let language = self.settings.language;
+        let mut selected_language = usize::from(language.is_rtl());
+        design::settings_card(ui, |ui| {
+            design::section_heading(
+                ui,
+                language.text("Appearance", "ظاهر و زبان"),
+                language.text(
+                    "Language, theme and window behavior.",
+                    "زبان، پوسته و رفتار پنجره را تنظیم کنید.",
+                ),
+            );
+            setting_row(ui, |ui| {
+                let label = ui.label(language.text("Language", "زبان"));
+                ui.with_layout(design::end_row(ui), |ui| {
+                    design::select(
+                        ui,
+                        "interface-language",
+                        &mut selected_language,
+                        &["English", "فارسی"],
+                        160.0,
+                    )
+                    .labelled_by(label.id);
                 });
-                if self.settings.appearance != MODES[mode] {
-                    self.settings.appearance = MODES[mode];
-                    design::set_mode(ui.ctx(), self.settings.appearance);
-                    self.queue_settings_save(ui.ctx());
-                }
-                let mut enabled = self.settings.close_to_tray;
-                if switch_row(ui, "Close to tray", &mut enabled) {
-                    match self.tray.enable(enabled) {
-                        Ok(()) => {
-                            self.settings.close_to_tray = enabled;
-                            self.queue_settings_save(ui.ctx());
-                        }
-                        Err(err) => {
-                            self.error(format!("Couldn't create the Windows tray icon. {err}"))
-                        }
+            });
+            let mut mode = MODES
+                .iter()
+                .position(|mode| *mode == self.settings.appearance)
+                .unwrap_or_default();
+            setting_row(ui, |ui| {
+                let label = ui.label(language.text("Theme", "پوسته"));
+                let modes = language.text(["System", "Light", "Dark"], ["سیستم", "روشن", "تیره"]);
+                ui.with_layout(design::end_row(ui), |ui| {
+                    design::select(ui, "appearance-theme", &mut mode, &modes, 160.0)
+                        .labelled_by(label.id);
+                });
+            });
+            if self.settings.appearance != MODES[mode] {
+                self.settings.appearance = MODES[mode];
+                design::set_mode(ui.ctx(), self.settings.appearance);
+                self.queue_settings_save(ui.ctx());
+            }
+            let mut enabled = self.settings.close_to_tray;
+            if switch_row(
+                ui,
+                language.text("Close to tray", "رفتن به ناحیهٔ اعلان هنگام بستن"),
+                &mut enabled,
+            ) {
+                match self.tray.enable(enabled, language) {
+                    Ok(()) => {
+                        self.settings.close_to_tray = enabled;
+                        self.queue_settings_save(ui.ctx());
+                    }
+                    Err(err) => {
+                        self.error(
+                            format!("Couldn't create the Windows tray icon. {err}"),
+                            "ایجاد نماد برنامه در ناحیهٔ اعلان ویندوز ممکن نشد.",
+                        );
                     }
                 }
-                if self.settings.close_to_tray {
-                    design::muted(ui, "Use Quit from the tray menu to exit Soundboard.");
-                }
-            });
+            }
+            if self.settings.close_to_tray {
+                design::muted(
+                    ui,
+                    language.text(
+                        "Use Quit from the tray menu to exit Soundboard.",
+                        "برای بستن کامل برنامه، در منوی ناحیهٔ اعلان «خروج» را انتخاب کنید.",
+                    ),
+                );
+            }
         });
+        if language != LANGUAGES[selected_language] {
+            self.change_language(ui.ctx(), LANGUAGES[selected_language]);
+        }
     }
 
     fn diagnostics(&mut self, ui: &mut Ui) {
-        Card::new().size(CardSize::Sm).show(ui, |ui| {
-            card_header(
+        let language = self.settings.language;
+        design::settings_card(ui, |ui| {
+            design::section_heading(
                 ui,
-                "Diagnostics",
-                "Open your clip files, settings and soundboard.log.",
+                language.text("Diagnostics", "عیب‌یابی"),
+                language.text(
+                    "Open your clip files, settings and soundboard.log.",
+                    "به فایل‌های کلیپ، تنظیمات و گزارش soundboard.log دسترسی داشته باشید.",
+                ),
             );
-            card_content(ui, |ui| {
-                let underruns = self.audio.meter.underruns.load(Relaxed);
-                design::muted(
-                    ui,
+            let underruns = self.audio.meter.underruns.load(Relaxed);
+            design::muted(
+                ui,
+                language.text(
                     format!("{underruns} mic buffer interruptions this session"),
-                );
-                let device_xruns = self.audio.meter.device_xruns.load(Relaxed);
-                design::muted(
-                    ui,
+                    format!("{underruns} وقفه در بافر میکروفون در این نشست"),
+                ),
+            );
+            let device_xruns = self.audio.meter.device_xruns.load(Relaxed);
+            design::muted(
+                ui,
+                language.text(
                     format!("{device_xruns} audio device buffer interruptions this session"),
+                    format!("{device_xruns} وقفه در بافر دستگاه صوتی در این نشست"),
+                ),
+            );
+            if ui
+                .add(design::toolbar_button(
+                    language.text("Open data folder", "باز کردن پوشهٔ داده‌ها"),
+                    Icon::FOLDER,
+                    ButtonVariant::Outline,
+                ))
+                .clicked()
+                && let Err(err) = Command::new("explorer.exe").arg(&self.store.root).spawn()
+            {
+                self.error(
+                    format!("Couldn't open the data folder. {err}"),
+                    "باز کردن پوشهٔ داده‌ها ممکن نشد.",
                 );
-                if ui
-                    .add(design::toolbar_button(
-                        "Open data folder",
-                        Icon::FOLDER,
-                        ButtonVariant::Outline,
-                    ))
-                    .clicked()
-                    && let Err(err) = Command::new("explorer.exe").arg(&self.store.root).spawn()
-                {
-                    self.error(format!("Couldn't open the data folder. {err}"));
-                }
-            });
+            }
         });
     }
 
@@ -264,11 +426,14 @@ impl App {
         if let Err(err) = self.request_play(
             Source::Memory(test_wav(), "wav".into()),
             None,
-            "Test tone".into(),
+            self.settings
+                .language
+                .text("Test tone", "صدای آزمایشی")
+                .into(),
             preview,
             None,
         ) {
-            self.error(err.to_string());
+            self.error(err.to_string(), "پخش صدای آزمایشی ممکن نشد.");
         }
     }
 }
@@ -294,7 +459,7 @@ fn device_row(
         Some(id) => match devices.iter().position(|device| &device.id == id) {
             Some(position) => position + 1,
             None => {
-                names.push("Device unavailable");
+                names.push(design::language(ui).text("Device unavailable", "دستگاه در دسترس نیست"));
                 names.len() - 1
             }
         },
@@ -303,8 +468,7 @@ fn device_row(
     let previous = index;
     setting_row(ui, |ui| {
         let title = design::column_label(ui, LABEL_WIDTH, ROW_HEIGHT, egui::Label::new(label));
-        ui.add(Select::new(label, &mut index, &names).width(ui.available_width()))
-            .labelled_by(title.id);
+        design::select(ui, label, &mut index, &names, ui.available_width()).labelled_by(title.id);
     });
     if previous == index {
         return false;
@@ -321,11 +485,12 @@ fn device_row(
 }
 
 fn mix_controls(ui: &mut Ui, settings: &mut Settings) -> bool {
+    let language = settings.language;
     let mic = format!("{:.0}%", settings.mic_volume * 100.0);
     let clips = format!("{:.0}%", settings.clip_volume * 100.0);
     let changed = slider_row(
         ui,
-        "Microphone",
+        language.text("Microphone", "میکروفون"),
         &mut settings.mic_volume,
         0.0..=2.0,
         0.01,
@@ -333,7 +498,7 @@ fn mix_controls(ui: &mut Ui, settings: &mut Settings) -> bool {
     );
     slider_row(
         ui,
-        "Clips",
+        language.text("Clips", "کلیپ‌ها"),
         &mut settings.clip_volume,
         0.0..=1.5,
         0.01,
@@ -354,18 +519,14 @@ fn slider_row(
         let label = design::column_label(ui, LABEL_WIDTH, ROW_HEIGHT, egui::Label::new(name));
         let width = ui.available_width() - VALUE_WIDTH - ui.spacing().item_spacing.x;
         let response = ui
-            .allocate_ui_with_layout(
-                egui::vec2(width, ROW_HEIGHT),
-                Layout::left_to_right(Align::Center),
-                |ui| {
-                    ui.add(Slider::new(value, range).step(step).label(name))
-                        .labelled_by(label.id)
-                },
-            )
+            .allocate_ui_with_layout(egui::vec2(width, ROW_HEIGHT), design::row(ui), |ui| {
+                ui.add(Slider::new(value, range).step(step).label(name))
+                    .labelled_by(label.id)
+            })
             .inner;
         ui.allocate_ui_with_layout(
             egui::vec2(VALUE_WIDTH, ROW_HEIGHT),
-            Layout::right_to_left(Align::Center),
+            design::end_row(ui),
             |ui| design::muted(ui, text),
         );
         response.changed()
@@ -375,7 +536,7 @@ fn slider_row(
 fn switch_row(ui: &mut Ui, name: &str, value: &mut bool) -> bool {
     setting_row(ui, |ui| {
         let label = ui.label(name);
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        ui.with_layout(design::end_row(ui), |ui| {
             let toggle = ui.add(Switch::new(value)).labelled_by(label.id);
             toggle.changed()
         })
@@ -385,7 +546,7 @@ fn switch_row(ui: &mut Ui, name: &str, value: &mut bool) -> bool {
 
 fn setting_row<R>(ui: &mut Ui, contents: impl FnOnce(&mut Ui) -> R) -> R {
     let size = egui::vec2(ui.available_width(), ROW_HEIGHT);
-    ui.allocate_ui_with_layout(size, Layout::left_to_right(Align::Center), contents)
+    ui.allocate_ui_with_layout(size, design::row(ui), contents)
         .inner
 }
 

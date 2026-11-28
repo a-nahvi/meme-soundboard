@@ -1,13 +1,14 @@
 use super::icons::{self, Icon};
-use crate::{audio::ClipProgress, storage::Appearance};
+use crate::{audio::ClipProgress, language::Language, storage::Appearance};
 use eframe::egui::{
-    self, Align, Color32, FontDefinitions, FontFamily, FontId, Frame, Label, Layout, Rect,
+    self, Align, Align2, Color32, FontDefinitions, FontId, Frame, Label, Layout, Margin, Rect,
     RichText, Sense, Stroke, Ui, Vec2, Widget,
 };
 use shadcn_egui::{
     Palette, Theme,
     components::{
         button::{Button, ButtonSize, ButtonVariant},
+        card::{Card, CardSize, card_content},
         icon::{Glyph, Icon as KitIcon, IconShape},
         kbd::{Kbd, KbdGroup},
         slider::{Slider, SliderVariant},
@@ -22,6 +23,38 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 pub const GUTTER: i8 = 28;
 pub const ROUND_CONTROL: AppVariant<ButtonSize> = ButtonSize::app("round-control");
 const PLAYBACK_SLIDER: AppVariant<SliderVariant> = SliderVariant::app("playback");
+
+pub fn set_language(ctx: &egui::Context, language: Language) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::unique("ui-language"), language));
+    ctx.request_repaint();
+}
+
+fn current_language(ctx: &egui::Context) -> Language {
+    ctx.data(|data| data.get_temp(egui::Id::unique("ui-language")))
+        .unwrap_or_default()
+}
+
+pub fn language(ui: &Ui) -> Language {
+    current_language(ui.ctx())
+}
+
+pub fn row(ui: &Ui) -> Layout {
+    language(ui).text(
+        Layout::left_to_right(Align::Center),
+        Layout::right_to_left(Align::Center),
+    )
+}
+
+pub fn end_row(ui: &Ui) -> Layout {
+    language(ui).text(
+        Layout::right_to_left(Align::Center),
+        Layout::left_to_right(Align::Center),
+    )
+}
+
+pub fn column(ui: &Ui) -> Layout {
+    Layout::top_down(language(ui).text(Align::Min, Align::Max))
+}
 
 const fn rgb(red: u8, green: u8, blue: u8) -> Color32 {
     Color32::from_rgb(red, green, blue)
@@ -89,7 +122,7 @@ pub fn install(ctx: &egui::Context, appearance: Appearance) -> bool {
         recipes.slider_thumb.bg.set(Paint::Role(Role::Primary, 1.0));
     });
 
-    // Inter supplies the kit's UI typography. Segoe UI covers more characters in clip and device names.
+    // Inter supplies the kit's typography. Windows' Segoe UI covers Persian and other scripts.
     let mut fonts = FontDefinitions::default();
     if let Some(windows) = std::env::var_os("WINDIR") {
         let file = std::path::PathBuf::from(windows)
@@ -100,8 +133,8 @@ pub fn install(ctx: &egui::Context, appearance: Appearance) -> bool {
             fonts
                 .font_data
                 .insert(name.clone(), egui::FontData::from_owned(bytes).into());
-            if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
-                family.push(name);
+            for family in fonts.families.values_mut() {
+                family.push(name.clone());
             }
         }
     }
@@ -182,15 +215,160 @@ pub fn muted(ui: &mut Ui, label: impl Into<String>) -> egui::Response {
 }
 
 pub fn column_label(ui: &mut Ui, width: f32, height: f32, label: Label) -> egui::Response {
-    ui.allocate_ui_with_layout(
-        Vec2::new(width, height),
-        Layout::left_to_right(Align::Center),
-        |ui| {
-            ui.set_min_width(width);
-            ui.add(label.truncate())
-        },
-    )
+    ui.allocate_ui_with_layout(Vec2::new(width, height), row(ui), |ui| {
+        ui.set_min_width(width);
+        ui.add(label.truncate())
+    })
     .inner
+}
+
+pub fn settings_card(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
+    Card::new().size(CardSize::Sm).show(ui, |ui| {
+        card_content(ui, |ui| {
+            ui.with_layout(column(ui), content);
+        });
+    });
+}
+
+pub fn section_heading(ui: &mut Ui, title: &str, description: &str) {
+    ui.label(RichText::new(title).strong().size(16.0));
+    muted(ui, description);
+    ui.add_space(4.0);
+}
+
+pub fn text_input(
+    ui: &mut Ui,
+    value: &mut String,
+    hint: &'static str,
+    width: f32,
+) -> egui::Response {
+    let align = language(ui).text(Align2::LEFT_CENTER, Align2::RIGHT_CENTER);
+    let p = palette(ui);
+    ui.scope(|ui| {
+        let visuals = ui.visuals_mut();
+        visuals.text_edit_bg_color = Some(p.card);
+        visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, p.input);
+        visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, p.ring);
+        visuals.widgets.active.bg_stroke = Stroke::new(1.0, p.ring);
+        ui.add(
+            egui::TextEdit::singleline(value)
+                .desired_width(width.min(ui.available_width()))
+                .margin(Margin::symmetric(10, 8))
+                .font(FontId::proportional(14.0))
+                .hint_text(hint)
+                .align(align),
+        )
+    })
+    .inner
+}
+
+pub fn select(
+    ui: &mut Ui,
+    id: &str,
+    selected: &mut usize,
+    options: &[&str],
+    width: f32,
+) -> egui::Response {
+    let p = palette(ui);
+    let rtl = language(ui).is_rtl();
+    ui.scope(|ui| {
+        control_colors(ui, p.foreground, p.card, p.accent, p.input);
+        ui.spacing_mut().interact_size.y = 36.0;
+        let combobox = egui::ComboBox::from_id_salt(id)
+            .width(width)
+            .wrap_mode(egui::TextWrapMode::Truncate);
+        let current = options[*selected];
+        let combobox = if rtl {
+            combobox.selected_text((egui::Atom::grow(), current))
+        } else {
+            combobox.selected_text(current)
+        };
+        let result = combobox.show_ui(ui, |ui| {
+            ui.with_layout(column(ui), |ui| {
+                options.iter().enumerate().find_map(|(index, option)| {
+                    ui.selectable_label(index == *selected, *option)
+                        .clicked()
+                        .then_some(index)
+                })
+            })
+            .inner
+        });
+        let mut response = result.response;
+        if let Some(Some(index)) = result.inner {
+            response.mark_changed();
+            *selected = index;
+        }
+        response
+    })
+    .inner
+}
+
+fn control_colors(
+    ui: &mut Ui,
+    foreground: Color32,
+    fill: Color32,
+    hover: Color32,
+    border: Color32,
+) {
+    ui.spacing_mut().button_padding = egui::vec2(10.0, 4.0);
+    let widgets = &mut ui.visuals_mut().widgets;
+    for (state, background) in [
+        (&mut widgets.inactive, fill),
+        (&mut widgets.hovered, hover),
+        (&mut widgets.active, hover),
+        (&mut widgets.open, hover),
+    ] {
+        state.weak_bg_fill = background;
+        state.bg_fill = background;
+        state.bg_stroke = Stroke::new(1.0, border);
+        state.fg_stroke.color = foreground;
+        state.corner_radius = 8.into();
+        state.expansion = 0.0;
+    }
+}
+
+pub fn dialog(
+    ctx: &egui::Context,
+    id: &'static str,
+    title: &str,
+    width: f32,
+    open: &mut bool,
+    content: impl FnOnce(&mut Ui),
+) {
+    let language = current_language(ctx);
+    let p = *Theme::current(ctx).palette();
+    let frame = Frame::new()
+        .fill(p.popover)
+        .corner_radius(12)
+        .stroke(Stroke::new(1.0, p.border))
+        .inner_margin(Margin::same(20))
+        .shadow(ctx.global_style().visuals.popup_shadow);
+    let response = egui::Modal::new(egui::Id::unique(id))
+        .frame(frame)
+        .show(ctx, |ui| {
+            let width = width.min(ctx.content_rect().width() - 32.0) - 40.0;
+            ui.set_width(width);
+            ui.with_layout(column(ui), |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(title).size(18.0).strong());
+                    ui.with_layout(end_row(ui), |ui| {
+                        if icon_button(
+                            ui,
+                            language.text("Close", "بستن"),
+                            Icon::CLOSE,
+                            ButtonVariant::Ghost,
+                        )
+                        .clicked()
+                        {
+                            *open = false;
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                content(ui);
+            });
+        });
+    *open &= !response.should_close();
 }
 
 pub fn panel(ui: &Ui) -> Frame {
@@ -209,8 +387,15 @@ const ICON_SLOT: KitIcon = KitIcon {
 
 pub fn toolbar_button(label: &str, icon: Icon, variant: ButtonVariant) -> IconButton<'_> {
     IconButton {
+        icon: Some(icon),
+        ..action_button(label, variant)
+    }
+}
+
+pub fn action_button(label: &str, variant: ButtonVariant) -> IconButton<'_> {
+    IconButton {
         label,
-        icon,
+        icon: None,
         variant,
         size: ButtonSize::Default,
         busy: false,
@@ -220,7 +405,7 @@ pub fn toolbar_button(label: &str, icon: Icon, variant: ButtonVariant) -> IconBu
 
 pub struct IconButton<'a> {
     label: &'a str,
-    icon: Icon,
+    icon: Option<Icon>,
     variant: ButtonVariant,
     size: ButtonSize,
     busy: bool,
@@ -242,21 +427,92 @@ impl IconButton<'_> {
         self.color = Some(color);
         self
     }
+
+    // The kit lays out each character separately. Keep Persian words in a single shaping run.
+    fn rtl_button(self, ui: &mut Ui) -> egui::Response {
+        let p = palette(ui);
+        let (fg, bg, hover, border) = match self.variant {
+            ButtonVariant::Default => (
+                p.primary_foreground,
+                p.primary,
+                p.primary.gamma_multiply(0.84),
+                p.primary,
+            ),
+            ButtonVariant::Secondary => {
+                (p.secondary_foreground, p.secondary, p.accent, p.secondary)
+            }
+            ButtonVariant::Ghost => (
+                p.foreground,
+                Color32::TRANSPARENT,
+                p.accent,
+                Color32::TRANSPARENT,
+            ),
+            ButtonVariant::Destructive => (
+                p.destructive_foreground,
+                p.destructive,
+                p.destructive.gamma_multiply(0.84),
+                p.destructive,
+            ),
+            _ => (p.foreground, p.card, p.accent, p.input),
+        };
+        let height = match self.size {
+            ButtonSize::Lg => 40.0,
+            ButtonSize::Sm => 30.0,
+            _ => 36.0,
+        };
+        ui.scope(|ui| {
+            control_colors(ui, fg, bg, hover, border);
+            let text = RichText::new(self.label).size(14.0).color(fg);
+            let slot = egui::IdSalt::new("soundboard-button-icon");
+            let button = if self.icon.is_some() {
+                egui::Button::new((text, egui::Atom::custom(slot, Vec2::splat(16.0))))
+            } else {
+                egui::Button::new(text)
+            };
+            let output = button.min_size(egui::vec2(0.0, height)).atom_ui(ui);
+            if let (Some(icon), Some(rect)) = (self.icon, output.rect(slot)) {
+                if self.busy {
+                    egui::Spinner::new().color(fg).paint_at(ui, rect);
+                } else {
+                    let mut color = self.color.unwrap_or(fg);
+                    if !output.enabled() {
+                        color = color.gamma_multiply(0.48);
+                    }
+                    icons::paint_hover(ui, &output, rect.expand(1.0), icon, color);
+                }
+            }
+            output.response
+        })
+        .inner
+    }
 }
 
 impl Widget for IconButton<'_> {
     fn ui(self, ui: &mut Ui) -> egui::Response {
+        let rtl = language(ui).is_rtl();
+        let icon_only = matches!(
+            self.size,
+            ButtonSize::Icon
+                | ButtonSize::IconXs
+                | ButtonSize::IconSm
+                | ButtonSize::IconLg
+                | ButtonSize::App(_)
+        );
+        if rtl && !icon_only {
+            return self.rtl_button(ui);
+        }
+        let button = Button::new(self.label)
+            .variant(self.variant)
+            .size(self.size);
+        let Some(icon) = self.icon else {
+            return ui.add(button);
+        };
         let glyph = if self.busy {
             Glyph::Spinner
         } else {
             ICON_SLOT.into()
         };
-        let response = ui.add(
-            Button::new(self.label)
-                .variant(self.variant)
-                .size(self.size)
-                .icon(glyph),
-        );
+        let response = ui.add(button.icon(glyph));
         if self.busy || !ui.is_rect_visible(response.rect) {
             return response;
         }
@@ -272,15 +528,15 @@ impl Widget for IconButton<'_> {
             ButtonVariant::Link => &style.button_variant_link,
             _ => &style.button_variant_default,
         };
-        let (size, icon_only) = match self.size {
-            ButtonSize::Xs => (&style.button_size_xs, false),
-            ButtonSize::Sm => (&style.button_size_sm, false),
-            ButtonSize::Lg => (&style.button_size_lg, false),
-            ButtonSize::Icon => (&style.button_size_icon, true),
-            ButtonSize::IconXs => (&style.button_size_icon_xs, true),
-            ButtonSize::IconSm => (&style.button_size_icon_sm, true),
-            ButtonSize::IconLg | ButtonSize::App(_) => (&style.button_size_icon_lg, true),
-            _ => (&style.button_size_default, false),
+        let size = match self.size {
+            ButtonSize::Xs => &style.button_size_xs,
+            ButtonSize::Sm => &style.button_size_sm,
+            ButtonSize::Lg => &style.button_size_lg,
+            ButtonSize::Icon => &style.button_size_icon,
+            ButtonSize::IconXs => &style.button_size_icon_xs,
+            ButtonSize::IconSm => &style.button_size_icon_sm,
+            ButtonSize::IconLg | ButtonSize::App(_) => &style.button_size_icon_lg,
+            _ => &style.button_size_default,
         };
         let layers: [&Recipe; 3] = [&style.button, variant, size];
         let state = theme.state(
@@ -309,7 +565,7 @@ impl Widget for IconButton<'_> {
             color = color.gamma_multiply(0.48);
         }
         let rect = Rect::from_center_size(center, Vec2::splat(slot + 2.0));
-        icons::paint_hover(ui, &response, rect, self.icon, color);
+        icons::paint_hover(ui, &response, rect, icon, color);
         response
     }
 }
@@ -335,6 +591,7 @@ pub fn keycaps(ui: &mut Ui, key: &str) {
 }
 
 pub fn timeline(ui: &mut Ui, progress: ClipProgress, width: f32) -> Option<u32> {
+    let language = language(ui);
     let time_width = if progress.duration_ms < 1000 {
         69.0
     } else {
@@ -354,10 +611,13 @@ pub fn timeline(ui: &mut Ui, progress: ClipProgress, width: f32) -> Option<u32> 
                         ui.add(
                             Slider::new(&mut elapsed, 0.0..=progress.duration_ms as f32)
                                 .variant(PLAYBACK_SLIDER)
-                                .label("Playback position"),
+                                .label(language.text("Playback position", "موقعیت پخش")),
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .on_hover_text("Click or drag to seek")
+                        .on_hover_text(language.text(
+                            "Click or drag to seek",
+                            "برای تغییر موقعیت پخش کلیک کنید یا نوار را بکشید",
+                        ))
                     },
                 )
                 .inner;
@@ -461,6 +721,37 @@ pub fn mic_meter(ui: &mut Ui, level: f32, animate: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persian_mirrors_controls_and_keeps_mixed_text_in_reading_order() {
+        let ctx = egui::Context::default();
+        install(&ctx, Appearance::Light);
+        set_language(&ctx, Language::Persian);
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.with_layout(row(ui), |ui| {
+                let first = ui.label("اول");
+                let second = ui.label("دوم");
+                assert!(first.rect.center().x > second.rect.center().x);
+            });
+            let galley = ui.painter().layout_no_wrap(
+                "کلیپ MEME 12".to_owned(),
+                FontId::proportional(16.0),
+                Color32::WHITE,
+            );
+            let glyphs = &galley.rows[0].glyphs;
+            let x = |character| {
+                glyphs
+                    .iter()
+                    .find(|glyph| glyph.chr == character)
+                    .unwrap()
+                    .pos
+                    .x
+            };
+            assert!(x('M') < x('1') && x('1') < x('2'));
+            assert!(x('2') < x('پ') && x('پ') < x('ک'));
+        });
+        output.textures_delta.clear();
+    }
 
     #[test]
     fn playback_timeline_seeks_both_directions_with_the_mouse() {

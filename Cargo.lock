@@ -743,8 +743,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 [[package]]
 name = "ecolor"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31bcbef0d4263a63eb32c4834e5d711613035ce1333468e107d928923e21e6e2"
+source = "git+https://github.com/aiongg/egui.git?rev=620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0#620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0"
 dependencies = [
  "bytemuck",
  "emath",
@@ -787,8 +786,7 @@ dependencies = [
 [[package]]
 name = "egui"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bec9144f49b7a28b5f395d3147e325b4fe3e77ba686eac11d1bdf0a7da3f375f"
+source = "git+https://github.com/aiongg/egui.git?rev=620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0#620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0"
 dependencies = [
  "accesskit",
  "ahash",
@@ -847,8 +845,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 [[package]]
 name = "emath"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73ce90f54750be8672c02be0743fe47530e6f251e066f0ee2869b59eb297af5"
+source = "git+https://github.com/aiongg/egui.git?rev=620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0#620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0"
 dependencies = [
  "bytemuck",
 ]
@@ -911,8 +908,7 @@ dependencies = [
 [[package]]
 name = "epaint"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97bac86ae3dde93fc3951e790951caea739ff39a6c89d909cdaf1d9278dbb1bd"
+source = "git+https://github.com/aiongg/egui.git?rev=620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0#620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -928,6 +924,7 @@ dependencies = [
  "self_cell",
  "skrifa",
  "smallvec",
+ "unicode-bidi",
  "unicode-general-category",
  "unicode-properties",
  "unicode-segmentation",
@@ -937,8 +934,7 @@ dependencies = [
 [[package]]
 name = "epaint_default_fonts"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfc1cc505827f4c23eedc297975a0fd038268d41293f389dd8ff3b574aefab19"
+source = "git+https://github.com/aiongg/egui.git?rev=620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0#620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0"
 
 [[package]]
 name = "equivalent"
@@ -1594,7 +1590,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "meme-soundboard"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "anyhow",
  "cpal",
@@ -3114,6 +3110,12 @@ dependencies = [
  "tempfile",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "unicode-bidi"
+version = "0.3.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c1cb5db39152898a79168971543b1cb5020dff7fe43c8dc468b0885f5e29df5"
 
 [[package]]
 name = "unicode-general-category"

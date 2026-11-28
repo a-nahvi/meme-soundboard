@@ -1,11 +1,7 @@
 use super::{App, design, icons::Icon, library::render_error};
 use eframe::egui::{self, Event, Key, Margin, Modifiers, Ui};
 use global_hotkey::hotkey::HotKey;
-use shadcn_egui::components::{
-    button::{Button, ButtonSize, ButtonVariant},
-    dialog::{Dialog, footer},
-    input::Input,
-};
+use shadcn_egui::components::button::{ButtonSize, ButtonVariant};
 
 pub(super) enum ShortcutTarget {
     Clip(String),
@@ -70,6 +66,7 @@ impl ShortcutDialog {
     }
 
     fn capture_area(&mut self, ui: &mut Ui) {
+        let language = design::language(ui);
         let p = design::palette(ui);
         let frame = design::panel(ui)
             .fill(p.background)
@@ -77,12 +74,13 @@ impl ShortcutDialog {
         frame.show(ui, |ui| {
             ui.set_width(ui.available_width());
             if self.manual {
-                ui.vertical(|ui| {
-                    let label = ui.label("Key combination");
-                    ui.add(
-                        Input::new(&mut self.typed)
-                            .hint("Ctrl+Alt+1 or Numpad1")
-                            .max_width(f32::INFINITY),
+                ui.with_layout(design::column(ui), |ui| {
+                    let label = ui.label(language.text("Key combination", "ترکیب کلیدها"));
+                    design::text_input(
+                        ui,
+                        &mut self.typed,
+                        language.text("Ctrl+Alt+1 or Numpad1", "Ctrl+Alt+1 یا Numpad1"),
+                        f32::INFINITY,
                     )
                     .labelled_by(label.id);
                 });
@@ -90,7 +88,10 @@ impl ShortcutDialog {
                 ui.horizontal(|ui| {
                     design::icon(ui, Icon::KEYBOARD, 18.0, p.primary);
                     if self.recording {
-                        ui.label("Press a key or combination");
+                        ui.label(language.text(
+                            "Press a key or combination",
+                            "یک کلید یا ترکیب کلیدها را فشار دهید",
+                        ));
                     } else if let Some(key) = &self.candidate {
                         design::keycaps(ui, key);
                     }
@@ -101,9 +102,11 @@ impl ShortcutDialog {
             if !self.manual
                 && ui
                     .add(
-                        Button::new("Type manually")
-                            .variant(ButtonVariant::Ghost)
-                            .size(ButtonSize::Sm),
+                        design::action_button(
+                            language.text("Type manually", "ورود دستی"),
+                            ButtonVariant::Ghost,
+                        )
+                        .size(ButtonSize::Sm),
                     )
                     .clicked()
             {
@@ -117,8 +120,12 @@ impl ShortcutDialog {
             } else if !self.recording
                 && ui
                     .add(
-                        design::toolbar_button("Record keys", Icon::KEYBOARD, ButtonVariant::Ghost)
-                            .size(ButtonSize::Sm),
+                        design::toolbar_button(
+                            language.text("Record keys", "ضبط کلیدها"),
+                            Icon::KEYBOARD,
+                            ButtonVariant::Ghost,
+                        )
+                        .size(ButtonSize::Sm),
                     )
                     .clicked()
             {
@@ -129,7 +136,7 @@ impl ShortcutDialog {
         });
         if self.recording && !self.current.is_empty() {
             ui.horizontal(|ui| {
-                design::muted(ui, "Current");
+                design::muted(ui, language.text("Current", "میان‌بر فعلی"));
                 design::keycaps(ui, &self.current);
             });
         }
@@ -153,63 +160,67 @@ impl App {
             return;
         };
         dialog.read_key(ctx);
+        let language = self.settings.language;
         let title = match dialog.target {
-            ShortcutTarget::Clip(_) => "Playback shortcut",
-            ShortcutTarget::Stop => "Stop shortcut",
+            ShortcutTarget::Clip(_) => language.text("Playback shortcut", "میان‌بر پخش"),
+            ShortcutTarget::Stop => language.text("Stop shortcut", "میان‌بر توقف"),
         };
-        let name = dialog.name.clone();
         let mut open = true;
         let mut binding = None;
         let mut cancel = false;
-        Dialog::new("shortcut-dialog", title)
-            .description(&name)
-            .width(430.0)
-            .show(ctx, &mut open, |ui| {
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 8.0;
-                    dialog.capture_area(ui);
-                    render_error(ui, dialog.error.as_deref());
-                });
-                footer(ui, |ui| {
-                    if !dialog.current.is_empty()
-                        && ui
-                            .add(Button::new("Remove").variant(ButtonVariant::Ghost))
-                            .clicked()
-                    {
-                        binding = Some(String::new());
-                    }
-                    cancel = ui
-                        .add(Button::new("Cancel").variant(ButtonVariant::Outline))
-                        .clicked();
-                    if ui
-                        .add_enabled(
-                            dialog.pending().is_some(),
-                            design::toolbar_button(
-                                "Save shortcut",
-                                Icon::CHECK,
-                                ButtonVariant::Default,
-                            ),
-                        )
+        design::dialog(ctx, "shortcut-dialog", title, 430.0, &mut open, |ui| {
+            design::muted(ui, dialog.name.as_str());
+            dialog.capture_area(ui);
+            render_error(ui, dialog.error.as_deref());
+            ui.with_layout(design::end_row(ui), |ui| {
+                if ui
+                    .add_enabled(
+                        dialog.pending().is_some(),
+                        design::toolbar_button(
+                            language.text("Save shortcut", "ذخیرهٔ میان‌بر"),
+                            Icon::CHECK,
+                            ButtonVariant::Default,
+                        ),
+                    )
+                    .clicked()
+                {
+                    binding = dialog.pending().map(str::to_owned);
+                }
+                cancel = ui
+                    .add(design::action_button(
+                        language.text("Cancel", "انصراف"),
+                        ButtonVariant::Outline,
+                    ))
+                    .clicked();
+                if !dialog.current.is_empty()
+                    && ui
+                        .add(design::action_button(
+                            language.text("Remove", "حذف میان‌بر"),
+                            ButtonVariant::Ghost,
+                        ))
                         .clicked()
-                    {
-                        binding = dialog.pending().map(str::to_owned);
-                    }
-                });
+                {
+                    binding = Some(String::new());
+                }
             });
+        });
 
         if let Some(key) = binding {
             match self.save_shortcut(&dialog.target, &key) {
                 Ok(()) => {
-                    self.message(if key.is_empty() {
-                        "Shortcut removed"
+                    if key.is_empty() {
+                        self.message("Shortcut removed", "میان‌بر حذف شد");
                     } else {
-                        "Shortcut saved"
-                    });
+                        self.message("Shortcut saved", "میان‌بر ذخیره شد");
+                    }
                     open = false;
                 }
                 Err(err) => {
                     self.store.log(&format!("Shortcut: {err:#}"));
-                    dialog.error = Some(err.to_string());
+                    dialog.error = Some(language.text(
+                        err.to_string(),
+                        "ذخیرهٔ میان‌بر ممکن نشد. ترکیب دیگری را امتحان کنید یا گزارش عیب‌یابی را ببینید.".to_owned(),
+                    ));
                 }
             }
         }

@@ -220,7 +220,17 @@ pub enum Event {
         request: u64,
         result: Result<ClipAudioInfo, String>,
     },
-    Error(String),
+    Error(Failure, String),
+}
+
+pub enum Failure {
+    Clip,
+    NoPreviewOutput,
+    NoPlaybackOutput,
+    Microphone,
+    VoiceOutput,
+    Headphones,
+    Reconnect,
 }
 
 type EventSink = Arc<dyn Fn(Event) + Send + Sync>;
@@ -446,7 +456,10 @@ impl Engine {
                         }
                         Err(err) => {
                             decode_params.cancel(job.preview, job.generation);
-                            decode_events(Event::Error(format!("Can't play clip. {err:#}")));
+                            decode_events(Event::Error(
+                                Failure::Clip,
+                                format!("Can't play clip. {err:#}"),
+                            ));
                         }
                     }
                 }
@@ -876,7 +889,7 @@ fn run_device_loop(
                         if let Some(queue) = &mut state.headphones {
                             queue.push(RenderCommand::Play(play)).is_ok()
                         } else {
-                            events(Event::Error("Choose a headphone or speaker output in Settings to preview clips.".into()));
+                            events(Event::Error(Failure::NoPreviewOutput, "Choose a headphone or speaker output in Settings to preview clips.".into()));
                             false
                         }
                     } else if let Some(queue) = &mut state.game {
@@ -890,6 +903,7 @@ fn run_device_loop(
                             queue.push(RenderCommand::Play(play)).is_ok()
                         } else {
                             events(Event::Error(
+                                Failure::NoPlaybackOutput,
                                 "Choose a headphone, speaker or voice output in Audio devices."
                                     .into(),
                             ));
@@ -925,8 +939,8 @@ fn open_route(host: &cpal::Host, wanted: &Route, signals: &StreamSignals<'_>) ->
             .context("Device is unavailable")
             .ok()
     };
-    let report = |label: &str, err: anyhow::Error| {
-        (signals.events)(Event::Error(format!("{label}. {err:#}")));
+    let report = |kind, label: &str, err: anyhow::Error| {
+        (signals.events)(Event::Error(kind, format!("{label}. {err:#}")));
     };
     let mic = wanted.microphone.as_deref().and_then(find);
     let mut input = None;
@@ -937,7 +951,7 @@ fn open_route(host: &cpal::Host, wanted: &Route, signals: &StreamSignals<'_>) ->
                 streams.push(stream);
                 input = Some(reader);
             }
-            Err(err) => report("Can't open the microphone", err),
+            Err(err) => report(Failure::Microphone, "Can't open the microphone", err),
         }
     }
     let mut game = None;
@@ -948,7 +962,7 @@ fn open_route(host: &cpal::Host, wanted: &Route, signals: &StreamSignals<'_>) ->
                 streams.push(stream);
                 game = Some(queue);
             }
-            Err(err) => report("Can't open the virtual cable", err),
+            Err(err) => report(Failure::VoiceOutput, "Can't open the virtual cable", err),
         }
     }
     let mut headphones = None;
@@ -959,7 +973,7 @@ fn open_route(host: &cpal::Host, wanted: &Route, signals: &StreamSignals<'_>) ->
                 streams.push(stream);
                 headphones = Some(queue);
             }
-            Err(err) => report("Can't open the headphone output", err),
+            Err(err) => report(Failure::Headphones, "Can't open the headphone output", err),
         }
     }
     (
@@ -1351,9 +1365,10 @@ fn error_handler(
             return;
         }
         if !failed.swap(true, Relaxed) {
-            events(Event::Error(format!(
-                "Audio stream interrupted. Reconnecting. {err}"
-            )));
+            events(Event::Error(
+                Failure::Reconnect,
+                format!("Audio stream interrupted. Reconnecting. {err}"),
+            ));
         }
     }
 }
@@ -1449,7 +1464,7 @@ mod tests {
         params.update(&settings);
         let meter = Arc::new(Meter::default());
         let events: EventSink = Arc::new(|event| {
-            if let Event::Error(message) = event {
+            if let Event::Error(_, message) = event {
                 eprintln!("{message}");
             }
         });
@@ -1634,7 +1649,7 @@ mod tests {
         handle_error(ErrorKind::DeviceNotAvailable.into());
         assert!(failed.load(Relaxed));
         assert!(
-            matches!(receive.try_recv(), Ok(Event::Error(message)) if message.contains("Reconnecting"))
+            matches!(receive.try_recv(), Ok(Event::Error(Failure::Reconnect, message)) if message.contains("Reconnecting"))
         );
         assert!(matches!(receive.try_recv(), Err(mpsc::TryRecvError::Empty)));
     }

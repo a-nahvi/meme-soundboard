@@ -2,6 +2,7 @@
 
 mod audio;
 mod folder;
+mod language;
 mod native_caption;
 mod releases;
 mod shortcuts;

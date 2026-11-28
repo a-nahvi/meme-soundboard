@@ -8,10 +8,7 @@ use eframe::egui::{
     self, Align, DragValue, Layout, PointerButton, Rect, RichText, Sense, Stroke, StrokeKind, Ui,
     pos2, vec2,
 };
-use shadcn_egui::components::{
-    button::{Button, ButtonVariant},
-    dialog::Dialog,
-};
+use shadcn_egui::components::button::ButtonVariant;
 
 pub(super) struct TrimDialog {
     request: u64,
@@ -84,6 +81,7 @@ impl App {
             .clip_path(&clip.file)
             .and_then(|path| self.audio.inspect_clip(path, dialog.request))
         {
+            self.store.log(&format!("{err:#}"));
             dialog.error = Some(err.to_string());
         }
         self.trim_dialog = Some(dialog);
@@ -110,54 +108,99 @@ impl App {
         let mut open = true;
         let mut action = None;
         let mut editing = false;
-        let name = dialog.name.clone();
-        Dialog::new("trim-clip", "Trim clip")
-            .description(&name)
-            .width(520.0)
-            .show(ctx, &mut open, |ui| {
+        let language = self.settings.language;
+        design::dialog(
+            ctx,
+            "trim-clip",
+            language.text("Trim clip", "برش کلیپ"),
+            520.0,
+            &mut open,
+            |ui| {
+                design::muted(ui, dialog.name.as_str());
                 if let (Some(info), Some(draft)) = (&dialog.info, &mut dialog.draft) {
                     editing = range_editor(ui, info, draft, preview_elapsed);
                 } else if dialog.error.is_none() {
-                    design::muted(ui, "Reading clip…");
+                    design::muted(ui, language.text("Reading clip…", "در حال خواندن کلیپ…"));
                 }
-                render_error(ui, dialog.error.as_deref());
+                render_error(
+                    ui,
+                    dialog.error.as_deref().map(|error| {
+                        language.text(
+                            error,
+                            if dialog.info.is_none() {
+                                "خواندن کلیپ ممکن نشد. گزارش عیب‌یابی را ببینید."
+                            } else {
+                                "پیش‌شنوی یا ذخیرهٔ برش ممکن نشد. گزارش عیب‌یابی را ببینید."
+                            },
+                        )
+                    }),
+                );
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let previewing = preview_elapsed.is_some() && dialog.draft == previous_draft;
                     let (label, icon, preview_action) = if previewing {
-                        ("Stop preview", Icon::STOP, TrimAction::StopPreview)
+                        (
+                            language.text("Stop preview", "توقف پیش‌شنوی"),
+                            Icon::STOP,
+                            TrimAction::StopPreview,
+                        )
                     } else {
-                        ("Preview", Icon::PLAY, TrimAction::Preview)
+                        (
+                            language.text("Preview", "پیش‌شنوی"),
+                            Icon::PLAY,
+                            TrimAction::Preview,
+                        )
                     };
                     if ui
                         .add_enabled(
                             dialog.draft.is_some() && (previewing || can_preview),
                             design::toolbar_button(label, icon, ButtonVariant::Outline),
                         )
-                        .on_hover_text("Listen on headphones or speakers")
-                        .on_disabled_hover_text("Choose an output in Audio devices")
+                        .on_hover_text(language.text(
+                            "Listen on headphones or speakers",
+                            "شنیدن با هدفون یا بلندگو",
+                        ))
+                        .on_disabled_hover_text(language.text(
+                            "Choose an output in Audio devices",
+                            "در بخش دستگاه‌های صوتی، یک خروجی انتخاب کنید",
+                        ))
                         .clicked()
                     {
                         action = Some(preview_action);
                     }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.with_layout(design::end_row(ui), |ui| {
                         let changed = dialog.changed_range().is_some();
-                        if ui.add_enabled(changed, Button::new("Save trim")).clicked() {
+                        if ui
+                            .add_enabled(
+                                changed,
+                                design::action_button(
+                                    language.text("Save trim", "ذخیرهٔ برش"),
+                                    ButtonVariant::Default,
+                                ),
+                            )
+                            .clicked()
+                        {
                             action = Some(TrimAction::Save);
                         }
                         if ui
                             .add_enabled(
                                 dialog.saved.is_some() || changed,
-                                Button::new("Revert").variant(ButtonVariant::Ghost),
+                                design::action_button(
+                                    language.text("Revert", "بازگردانی"),
+                                    ButtonVariant::Ghost,
+                                ),
                             )
-                            .on_hover_text("Restore the full clip")
+                            .on_hover_text(
+                                language.text("Restore the full clip", "بازگردانی کلیپ کامل"),
+                            )
                             .clicked()
                         {
                             action = Some(TrimAction::Revert);
                         }
                     });
                 });
-            });
+            },
+        );
         if !open {
             dialog.stop_preview(&self.audio.player);
             return;
@@ -175,17 +218,20 @@ impl App {
                     match self.set_clip_trim(&dialog.id, trim) {
                         Ok(()) => {
                             dialog.stop_preview(&self.audio.player);
-                            self.message(if trim.is_some() {
-                                "Trim saved"
+                            if trim.is_some() {
+                                self.message("Trim saved", "برش ذخیره شد");
                             } else {
-                                "Full clip restored"
-                            });
+                                self.message("Full clip restored", "کلیپ کامل بازگردانی شد");
+                            }
                             if can_preview {
                                 self.play_clip(index, true);
                             }
                             return;
                         }
-                        Err(err) => dialog.error = Some(err.to_string()),
+                        Err(err) => {
+                            self.store.log(&format!("{err:#}"));
+                            dialog.error = Some(err.to_string());
+                        }
                     }
                 }
             }
@@ -201,9 +247,12 @@ impl App {
                     if dialog.info.is_some() {
                         dialog.error = None;
                     }
-                    self.message("Full clip restored");
+                    self.message("Full clip restored", "کلیپ کامل بازگردانی شد");
                 }
-                Err(err) => dialog.error = Some(err.to_string()),
+                Err(err) => {
+                    self.store.log(&format!("{err:#}"));
+                    dialog.error = Some(err.to_string());
+                }
             },
             Some(TrimAction::Preview) => {
                 dialog.preview_after_edit = false;
@@ -221,7 +270,10 @@ impl App {
                     });
                 match result {
                     Ok(generation) => dialog.preview_generation = Some(generation),
-                    Err(err) => dialog.error = Some(err.to_string()),
+                    Err(err) => {
+                        self.store.log(&format!("{err:#}"));
+                        dialog.error = Some(err.to_string());
+                    }
                 }
             }
             Some(TrimAction::StopPreview) => {
@@ -265,6 +317,7 @@ fn range_editor(
     draft: &mut ClipTrim,
     preview_elapsed: Option<u32>,
 ) -> bool {
+    let language = design::language(ui);
     let duration = info.duration_ms;
     let p = design::palette(ui);
     let previous = *draft;
@@ -305,8 +358,12 @@ fn range_editor(
     }
     response
         .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
-        .on_hover_text("Click or drag to set a boundary");
-    ui.horizontal(|ui| {
+        .on_hover_text(language.text(
+            "Click or drag to set a boundary",
+            "برای تنظیم مرز برش کلیک کنید یا دستگیره را بکشید",
+        ));
+    // Time increases to the right in both languages.
+    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
         let time_label = |ui: &mut Ui, time| {
             ui.label(
                 RichText::new(design::seconds_label(time))
@@ -321,14 +378,25 @@ fn range_editor(
     });
     let typing_or_dragging = ui
         .horizontal(|ui| {
-            let start = time_field(ui, "Start", &mut draft.start_ms, 0..=draft.end_ms - 1);
+            let start = time_field(
+                ui,
+                language.text("Start", "شروع"),
+                &mut draft.start_ms,
+                0..=draft.end_ms - 1,
+            );
             ui.add_space(8.0);
-            let end = time_field(ui, "End", &mut draft.end_ms, draft.start_ms + 1..=duration);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let end = time_field(
+                ui,
+                language.text("End", "پایان"),
+                &mut draft.end_ms,
+                draft.start_ms + 1..=duration,
+            );
+            ui.with_layout(design::end_row(ui), |ui| {
+                let duration = design::seconds_label(draft.duration_ms());
                 ui.label(
-                    RichText::new(format!(
-                        "{} selected",
-                        design::seconds_label(draft.duration_ms())
+                    RichText::new(language.text(
+                        format!("{duration} selected"),
+                        format!("انتخاب: {duration}"),
                     ))
                     .strong()
                     .color(p.primary),

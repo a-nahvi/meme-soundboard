@@ -1,12 +1,12 @@
 use super::{design, icons::Icon};
-use crate::releases::{self, AvailableUpdate};
+use crate::{
+    releases::{self, AvailableUpdate},
+    storage::Store,
+};
 use anyhow::Result;
 use eframe::egui::{self, RichText, Ui};
-use shadcn_egui::components::{
-    button::ButtonVariant,
-    card::{Card, CardSize, card_content, card_header},
-};
-use std::{path::Path, sync::mpsc, thread};
+use shadcn_egui::components::button::ButtonVariant;
+use std::{sync::mpsc, thread};
 
 #[derive(Default)]
 pub(super) struct Updates {
@@ -27,88 +27,117 @@ enum Status {
 }
 
 impl Updates {
-    pub fn ui(&mut self, ui: &mut Ui, data: &Path) {
-        self.receive();
-        Card::new().size(CardSize::Sm).show(ui, |ui| {
-            card_header(
+    pub fn ui(&mut self, ui: &mut Ui, store: &Store) {
+        self.receive(store);
+        let language = design::language(ui);
+        let version = releases::INSTALLED_VERSION;
+        design::settings_card(ui, |ui| {
+            design::section_heading(
                 ui,
-                "Updates",
-                &format!("Installed version {}", releases::INSTALLED_VERSION),
+                language.text("Updates", "به‌روزرسانی"),
+                &language.text(
+                    format!("Installed version {version}"),
+                    format!("نسخهٔ نصب‌شده {version}"),
+                ),
             );
-            card_content(ui, |ui| {
-                let repository = releases::REPOSITORY;
-                ui.horizontal_wrapped(|ui| {
-                    if ui
-                        .add_enabled(
-                            self.pending.is_none(),
-                            design::toolbar_button(
-                                "Check for updates",
-                                Icon::REFRESH,
-                                ButtonVariant::Outline,
-                            ),
-                        )
-                        .clicked()
-                    {
-                        self.start(ui.ctx(), Status::Checking, move || {
-                            Ok(match releases::check(repository)? {
-                                Some(update) => Status::Available(update),
-                                None => Status::Current,
-                            })
-                        });
-                    }
+            let repository = releases::REPOSITORY;
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add_enabled(
+                        self.pending.is_none(),
+                        design::toolbar_button(
+                            language.text("Check for updates", "بررسی به‌روزرسانی"),
+                            Icon::REFRESH,
+                            ButtonVariant::Outline,
+                        ),
+                    )
+                    .clicked()
+                {
+                    self.start(ui.ctx(), Status::Checking, move || {
+                        Ok(match releases::check(repository)? {
+                            Some(update) => Status::Available(update),
+                            None => Status::Current,
+                        })
+                    });
+                }
+                if ui
+                    .add(design::toolbar_button(
+                        language.text("Open GitHub releases", "مشاهدهٔ نسخه‌ها در GitHub"),
+                        Icon::EXTERNAL_LINK,
+                        ButtonVariant::Ghost,
+                    ))
+                    .clicked()
+                {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(format!(
+                        "https://github.com/{repository}/releases"
+                    )));
+                }
+            });
+            match &self.status {
+                Status::Idle => {}
+                Status::Checking => {
+                    design::muted(
+                        ui,
+                        language.text("Checking GitHub…", "در حال بررسی GitHub…"),
+                    );
+                }
+                Status::Current => {
+                    design::muted(
+                        ui,
+                        language.text("You're up to date.", "آخرین نسخه نصب است."),
+                    );
+                }
+                Status::Available(update) => {
+                    let update = update.clone();
+                    let version = &update.version;
+                    ui.label(
+                        RichText::new(language.text(
+                            format!("Version {version} is available"),
+                            format!("نسخهٔ {version} در دسترس است"),
+                        ))
+                        .strong(),
+                    );
                     if ui
                         .add(design::toolbar_button(
-                            "Open GitHub releases",
-                            Icon::EXTERNAL_LINK,
-                            ButtonVariant::Ghost,
+                            language.text("Download and install", "دانلود و نصب"),
+                            Icon::DOWNLOAD,
+                            ButtonVariant::Default,
                         ))
                         .clicked()
                     {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(format!(
-                            "https://github.com/{repository}/releases"
-                        )));
-                    }
-                });
-                match &self.status {
-                    Status::Idle => {}
-                    Status::Checking => {
-                        design::muted(ui, "Checking GitHub…");
-                    }
-                    Status::Current => {
-                        design::muted(ui, "You're up to date.");
-                    }
-                    Status::Available(update) => {
-                        let update = update.clone();
-                        ui.label(
-                            RichText::new(format!("Version {} is available", update.version))
-                                .strong(),
-                        );
-                        if ui
-                            .add(design::toolbar_button(
-                                "Download and install",
-                                Icon::DOWNLOAD,
-                                ButtonVariant::Default,
-                            ))
-                            .clicked()
-                        {
-                            let data = data.to_path_buf();
-                            self.start(ui.ctx(), Status::Downloading, move || {
-                                releases::download_and_install(repository, &update, &data)?;
-                                Ok(Status::InstallerOpened)
-                            });
-                        }
-                    }
-                    Status::Downloading => {
-                        design::muted(ui, "Downloading and verifying the installer…");
-                    }
-                    Status::InstallerOpened => {
-                        design::muted(ui, "Installer opened. Follow Setup to apply the update.");
-                    }
-                    Status::Error(error) => {
-                        ui.label(RichText::new(error).color(design::palette(ui).destructive));
+                        let data = store.root.clone();
+                        self.start(ui.ctx(), Status::Downloading, move || {
+                            releases::download_and_install(repository, &update, &data)?;
+                            Ok(Status::InstallerOpened)
+                        });
                     }
                 }
-            });
+                Status::Downloading => {
+                    design::muted(
+                        ui,
+                        language.text(
+                            "Downloading and verifying the installer…",
+                            "در حال دانلود و بررسی نصب‌کننده…",
+                        ),
+                    );
+                }
+                Status::InstallerOpened => {
+                    design::muted(
+                        ui,
+                        language.text(
+                            "Installer opened. Follow Setup to apply the update.",
+                            "نصب‌کننده باز شد. مراحل نصب را برای به‌روزرسانی ادامه دهید.",
+                        ),
+                    );
+                }
+                Status::Error(error) => {
+                    let message = language.text(
+                        error.as_str(),
+                        "به‌روزرسانی انجام نشد. دوباره تلاش کنید یا گزارش عیب‌یابی را ببینید.",
+                    );
+                    ui.label(RichText::new(message).color(design::palette(ui).destructive));
+                }
+            }
         });
     }
 
@@ -128,10 +157,13 @@ impl Updates {
         });
     }
 
-    fn receive(&mut self) {
+    fn receive(&mut self, store: &Store) {
         let Some(pending) = &self.pending else {
             return;
         };
+        if let Status::Error(error) = &self.status {
+            store.log(error);
+        }
         self.status = match pending.try_recv() {
             Ok(Ok(status)) => status,
             Ok(Err(error)) => Status::Error(error.to_string()),

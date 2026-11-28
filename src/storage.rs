@@ -1,3 +1,4 @@
+use crate::language::Language;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
@@ -43,6 +44,7 @@ pub struct Settings {
     pub local_playback_only: bool,
     pub stop_key: String,
     pub appearance: Appearance,
+    pub language: Language,
     pub close_to_tray: bool,
 }
 
@@ -61,6 +63,7 @@ impl Default for Settings {
             local_playback_only: false,
             stop_key: "Ctrl+Alt+0".into(),
             appearance: Appearance::System,
+            language: Language::default(),
             close_to_tray: true,
         }
     }
@@ -458,5 +461,25 @@ fn move_file(from: &Path, to: &Path, flags: u32) -> std::io::Result<()> {
         Err(std::io::Error::last_os_error())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn older_settings_default_to_english_and_can_save_persian() {
+        let mut settings: Settings =
+            serde_json::from_str(r#"{"mic_muted":true,"stop_key":"F8"}"#).unwrap();
+        assert_eq!(settings.language, Language::English);
+        settings.language = Language::Persian;
+
+        let saved = serde_json::to_value(&settings).unwrap();
+        assert_eq!(saved["language"], "persian");
+        let reloaded: Settings = serde_json::from_value(saved).unwrap();
+        assert_eq!(reloaded.language, Language::Persian);
+        assert!(reloaded.mic_muted);
+        assert_eq!(reloaded.stop_key, "F8");
     }
 }

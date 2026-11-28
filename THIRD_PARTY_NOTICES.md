@@ -1,5 +1,9 @@
 # Third-party notices
 
+## egui and unicode-bidi
+
+The application uses egui 0.37 with a pinned bidirectional text patch and unicode-bidi. [Patch source](https://github.com/aiongg/egui/commit/620e070e2a9aa3865c1924d0ffd0515a8d2bb5a0) · [egui license](assets/licenses/egui.txt) · [unicode-bidi license](assets/licenses/unicode-bidi.txt)
+
 ## Lucide and Feather
 
 The default source build uses Lucide icons through shadcn-egui. Lucide is licensed under ISC and the Feather-derived icons are licensed under MIT. [License texts](assets/licenses/Lucide.txt)
