@@ -7,7 +7,6 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/app.ico");
     println!("cargo:rerun-if-changed=.git/config");
     println!("cargo:rerun-if-env-changed=MEME_SOUNDBOARD_GITHUB_REPOSITORY");
-    println!("cargo:rerun-if-env-changed=MEME_SOUNDBOARD_PRIVATE_UPDATES");
     let repository = repository();
     println!("cargo:rustc-env=MEME_SOUNDBOARD_GITHUB_REPOSITORY={repository}");
     embed_resource::compile("assets/app.rc", embed_resource::NONE)

@@ -24,7 +24,27 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Cargo failed with exit code $LASTEXITCODE." }
     & $compiler 'installer.iss'
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
-    Get-Item -LiteralPath 'dist/MemeSoundboard-Setup-x64.exe'
+
+    $metadata = & cargo metadata --locked --no-deps --format-version 1
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the application version.' }
+    $version = ($metadata | ConvertFrom-Json).packages |
+        Where-Object { $_.name -ceq 'meme-soundboard' } |
+        Select-Object -First 1 -ExpandProperty version
+    if (!$version) { throw 'Meme Soundboard was not found in the Cargo metadata.' }
+    $fileVersion = ($version -split '[-+]', 2)[0]
+    $application = Get-Item -LiteralPath 'target/release/meme-soundboard.exe'
+    $installer = Get-Item -LiteralPath 'dist/MemeSoundboard-Setup-x64.exe'
+    if ($application.VersionInfo.FileVersion.Trim() -cne $fileVersion -or
+        $installer.VersionInfo.FileVersion.Trim() -cne "$fileVersion.0") {
+        throw 'The executable and installer versions must match the Cargo version.'
+    }
+    $manifest = [ordered]@{
+        version = $version
+        size = $installer.Length
+        sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    } | ConvertTo-Json
+    [IO.File]::WriteAllText((Join-Path $installer.DirectoryName 'meme-soundboard-update.json'), $manifest)
+    $installer
 } finally {
     Pop-Location
 }

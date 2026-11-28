@@ -1,7 +1,7 @@
 [Setup]
 AppId=MemeSoundboard.Windows
 AppName=Meme Soundboard
-AppVersion=0.4.9
+AppVersion=0.4.10
 AppPublisher=Meme Soundboard
 AppPublisherURL=https://github.com/a-nahvi/meme-soundboard
 AppSupportURL=https://github.com/a-nahvi/meme-soundboard/issues
@@ -24,7 +24,7 @@ Compression=lzma2
 SolidCompression=yes
 ArchiveExtraction=full
 WizardStyle=modern
-VersionInfoVersion=0.4.9.0
+VersionInfoVersion=0.4.10.0
 VersionInfoDescription=Meme Soundboard Setup
 
 [Languages]

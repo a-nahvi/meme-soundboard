@@ -36,7 +36,7 @@ For destinations using voice activity, clips can play while you talk. For destin
 
 ## Updates and saved data
 
-Open **Updates** from the sidebar and select **Check for updates**. The app reads the latest stable public Release directly from GitHub and checks the installer’s SHA-256 before opening Setup.
+Open **Updates** from the sidebar and select **Check for updates**. The app reads `meme-soundboard-update.json` from the latest public GitHub Release and downloads the installer from that version’s release. It verifies the file size and SHA-256 before opening Setup. [GitHub release downloads](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)
 
 Setup closes the running copy from the selected installation folder and updates it in place. The `data` folder beside the executable holds clips, saved trims, favorites, shortcuts, settings, and diagnostics.
 
@@ -51,13 +51,13 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 ```
 
-To build the installer with Inno Setup, run the following command. The output is `dist\MemeSoundboard-Setup-x64.exe`.
+To build the installer with Inno Setup, run the following command. It creates `MemeSoundboard-Setup-x64.exe` and `meme-soundboard-update.json` in `dist`.
 
 ```powershell
 .\build-installer.ps1 -Iscc "C:\path\to\ISCC.exe"
 ```
 
-Builds use the GitHub `origin` as their update source. Source archives default to this project’s repository. Set `MEME_SOUNDBOARD_GITHUB_REPOSITORY` to an `owner/repository` pair to override it. For a private update source, set `MEME_SOUNDBOARD_PRIVATE_UPDATES=1` before building and sign in with Git for Windows or GitHub CLI.
+Builds use the public Releases of their GitHub `origin` as their update source. Source archives default to this project’s repository. Set `MEME_SOUNDBOARD_GITHUB_REPOSITORY` to an `owner/repository` pair to override it.
 
 <details>
 <summary>Build the installer with Iconly</summary>
@@ -78,7 +78,7 @@ GitHub Releases is the sole publication channel for new versions.
 
 1. Set the version in `Cargo.toml`, `Cargo.lock`, `assets/app.rc`, and `installer.iss`. Build the official installer with `-WithIconly` and test an in-place upgrade from the previous release.
 2. Push the release commit to `main`. Keep the licensed Iconly source local and the generated atlas in the ignored `assets/iconly/` directory.
-3. Create a stable GitHub Release for that commit using a `v`-prefixed tag. Attach `MemeSoundboard-Setup-x64.exe` and mark the release as latest once its asset is ready.
+3. Create a draft GitHub Release for that commit using a `v`-prefixed tag. Attach both `MemeSoundboard-Setup-x64.exe` and `meme-soundboard-update.json` from the same build. Publish the stable release as latest once both assets are ready.
 4. Verify that the previous version finds the release in **Updates** and that the published download matches the installer.
 
 ## Support and license

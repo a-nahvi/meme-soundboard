@@ -161,9 +161,6 @@ impl Updates {
         let Some(pending) = &self.pending else {
             return;
         };
-        if let Status::Error(error) = &self.status {
-            store.log(error);
-        }
         self.status = match pending.try_recv() {
             Ok(Ok(status)) => status,
             Ok(Err(error)) => Status::Error(error.to_string()),
@@ -172,6 +169,9 @@ impl Updates {
                 Status::Error("The update stopped. Check again to retry.".into())
             }
         };
+        if let Status::Error(error) = &self.status {
+            store.log(error);
+        }
         self.pending = None;
     }
 }

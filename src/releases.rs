@@ -2,10 +2,9 @@ use anyhow::{Context, Result, bail, ensure};
 use semver::Version;
 use serde::Deserialize;
 use std::{
-    env,
     ffi::OsString,
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::Read,
     os::windows::{ffi::OsStringExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -21,77 +20,54 @@ use windows_sys::Win32::{
 };
 
 const INSTALLER: &str = "MemeSoundboard-Setup-x64.exe";
+const MANIFEST: &str = "meme-soundboard-update.json";
+const MANIFEST_LIMIT: u64 = 16 * 1024;
 pub const REPOSITORY: &str = env!("MEME_SOUNDBOARD_GITHUB_REPOSITORY");
 pub const INSTALLED_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Deserialize)]
-struct Release {
-    tag_name: String,
-    draft: bool,
-    prerelease: bool,
-    assets: Vec<Asset>,
-}
-
-#[derive(Deserialize)]
-struct Asset {
-    id: u64,
-    name: String,
+struct UpdateManifest {
+    version: String,
     size: u64,
-    digest: Option<String>,
+    sha256: String,
 }
 
 #[derive(Clone)]
 pub struct AvailableUpdate {
     pub version: Version,
-    asset_id: u64,
     size: u64,
     sha256: String,
 }
 
 pub fn check(repository: &str) -> Result<Option<AvailableUpdate>> {
-    let endpoint = format!("repos/{repository}/releases/latest");
-    let response = request(
-        &endpoint,
-        "application/vnd.github+json",
-        Stdio::piped(),
-        2_097_152,
-    )?;
-    let release = serde_json::from_slice(&response).context("Can't read the GitHub release.")?;
-    update_from_release(release, &Version::parse(INSTALLED_VERSION)?)
+    check_for_version(repository, &Version::parse(INSTALLED_VERSION)?)
 }
 
-fn update_from_release(release: Release, installed: &Version) -> Result<Option<AvailableUpdate>> {
-    if release.draft || release.prerelease {
-        return Ok(None);
-    }
-    let tag = release
-        .tag_name
-        .strip_prefix('v')
-        .unwrap_or(&release.tag_name);
-    let version = Version::parse(tag).context("The latest release has an invalid version tag.")?;
+fn check_for_version(repository: &str, installed: &Version) -> Result<Option<AvailableUpdate>> {
+    let url = format!("https://github.com/{repository}/releases/latest/download/{MANIFEST}");
+    let response = download(&url, Stdio::piped(), MANIFEST_LIMIT)?;
+    update_from_manifest(&response, installed)
+}
+
+fn update_from_manifest(bytes: &[u8], installed: &Version) -> Result<Option<AvailableUpdate>> {
+    let manifest: UpdateManifest =
+        serde_json::from_slice(bytes).context("Can't read the release update information.")?;
+    let version = Version::parse(&manifest.version).context("The update version is invalid.")?;
     if !version.pre.is_empty() || !version.cmp_precedence(installed).is_gt() {
         return Ok(None);
     }
-    let asset = release
-        .assets
-        .into_iter()
-        .find(|asset| asset.name == INSTALLER)
-        .context("The latest GitHub release is missing the Windows installer.")?;
-    let sha256 = asset
-        .digest
-        .as_deref()
-        .and_then(|digest| digest.strip_prefix("sha256:"))
-        .filter(|digest| digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .context("GitHub has not supplied a SHA-256 digest for this installer.")?;
     ensure!(
-        asset.id != 0 && asset.size != 0,
-        "The installer asset is incomplete."
+        manifest.size != 0,
+        "The installer size in the update information is invalid."
+    );
+    ensure!(
+        manifest.sha256.len() == 64 && manifest.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "The installer SHA-256 in the update information is invalid."
     );
     Ok(Some(AvailableUpdate {
         version,
-        asset_id: asset.id,
-        size: asset.size,
-        sha256: sha256.to_owned(),
+        size: manifest.size,
+        sha256: manifest.sha256,
     }))
 }
 
@@ -99,36 +75,7 @@ pub fn download_and_install(repository: &str, update: &AvailableUpdate, data: &P
     let install_dir = data
         .parent()
         .context("Can't locate the installation folder.")?;
-    let directory = data.join("updates").join(update.version.to_string());
-    fs::create_dir_all(&directory).context("Can't create the updates folder.")?;
-    let installer = directory.join(INSTALLER);
-    if !installer_matches(&installer, update) {
-        let endpoint = format!("repos/{repository}/releases/assets/{}", update.asset_id);
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let staging = directory.join(format!("download-{nonce}.part"));
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&staging)
-            .context("Can't create the installer download file.")?;
-        let downloaded = (|| {
-            request(
-                &endpoint,
-                "application/octet-stream",
-                Stdio::from(file),
-                update.size,
-            )?;
-            ensure!(
-                installer_matches(&staging, update),
-                "The installer did not match the GitHub release digest."
-            );
-            fs::rename(&staging, &installer).context("Can't save the verified installer.")
-        })();
-        if downloaded.is_err() {
-            let _ = fs::remove_file(&staging);
-        }
-        downloaded?;
-    }
+    let installer = download_installer(repository, update, data)?;
 
     // Inno Setup accepts a quoted /DIR value. This also covers custom install locations.
     let mut directory_arg = OsString::from("/DIR=\"");
@@ -140,6 +87,40 @@ pub fn download_and_install(repository: &str, update: &AvailableUpdate, data: &P
         .spawn()
         .context("Can't open the update installer.")?;
     Ok(())
+}
+
+fn installer_url(repository: &str, version: &Version) -> String {
+    format!("https://github.com/{repository}/releases/download/v{version}/{INSTALLER}")
+}
+
+fn download_installer(repository: &str, update: &AvailableUpdate, data: &Path) -> Result<PathBuf> {
+    let directory = data.join("updates").join(update.version.to_string());
+    fs::create_dir_all(&directory).context("Can't create the updates folder.")?;
+    let installer = directory.join(INSTALLER);
+    if !installer_matches(&installer, update) {
+        let url = installer_url(repository, &update.version);
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let staging = directory.join(format!("download-{nonce}.part"));
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging)
+            .context("Can't create the installer download file.")?;
+        let downloaded = (|| {
+            download(&url, Stdio::from(file), update.size)?;
+            ensure!(
+                installer_matches(&staging, update),
+                "The installer did not match the size and SHA-256 in the update information."
+            );
+            fs::rename(&staging, &installer).context("Can't save the verified installer.")
+        })();
+        if downloaded.is_err() {
+            let _ = fs::remove_file(&staging);
+        }
+        downloaded?;
+    }
+
+    Ok(installer)
 }
 
 fn installer_matches(path: &Path, update: &AvailableUpdate) -> bool {
@@ -200,22 +181,9 @@ fn sha256(mut source: impl Read) -> Result<(u64, String)> {
     Ok((length, digest))
 }
 
-fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Vec<u8>> {
-    let token = if option_env!("MEME_SOUNDBOARD_PRIVATE_UPDATES") == Some("1") {
-        let token = github_token().context(
-            "Sign in to Git for Windows or GitHub CLI with access to this repository. You can also open Releases in your browser.",
-        )?;
-        ensure!(
-            token.trim().bytes().all(|byte| byte.is_ascii_graphic()),
-            "The stored GitHub credential is invalid."
-        );
-        Some(token)
-    } else {
-        None
-    };
+fn download(url: &str, output: Stdio, limit: u64) -> Result<Vec<u8>> {
     let curl = system_curl().context("Can't locate Windows' GitHub download helper.")?;
-    let mut command = Command::new(curl);
-    command
+    let response = Command::new(curl)
         .args([
             "--disable",
             "--silent",
@@ -234,61 +202,33 @@ fn request(endpoint: &str, accept: &str, output: Stdio, limit: u64) -> Result<Ve
             "120",
             "--user-agent",
             concat!("Meme-Soundboard/", env!("CARGO_PKG_VERSION")),
-            "--header",
-            "X-GitHub-Api-Version: 2026-03-10",
             "--write-out",
             "%{stderr}%{http_code}\n",
         ])
-        .arg("--header")
-        .arg(format!("Accept: {accept}"))
         .arg("--max-filesize")
         .arg(limit.to_string())
-        .arg(format!("https://api.github.com/{endpoint}"))
+        .arg(url)
         .env_remove("GH_TOKEN")
         .env_remove("GITHUB_TOKEN")
+        .stdin(Stdio::null())
         .stdout(output)
         .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW);
-    if token.is_some() {
-        // curl drops Authorization on cross-origin redirects. Keep the token off the command line.
-        command.args(["--header", "@-"]).stdin(Stdio::piped());
-    } else {
-        command.stdin(Stdio::null());
-    }
-    let mut child = command
-        .spawn()
-        .context("Can't start the GitHub connection.")?;
-    let header_sent = if let Some(token) = &token {
-        child
-            .stdin
-            .take()
-            .context("Can't send GitHub authentication.")?
-            .write_all(format!("Authorization: Bearer {}\n", token.trim()).as_bytes())
-    } else {
-        Ok(())
-    };
-    let response = child
-        .wait_with_output()
-        .context("Can't read the GitHub response.")?;
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .context("Can't download the GitHub release file.")?;
     let errors = String::from_utf8_lossy(&response.stderr);
     let code = errors
         .lines()
         .find_map(|line| line.trim().parse::<u16>().ok());
     match code {
-        Some(200..=299) if response.status.success() => {
-            header_sent.context("Can't send GitHub authentication.")?;
-            Ok(response.stdout)
-        }
-        Some(401 | 403) if token.is_some() => {
-            bail!("Sign in to GitHub with an account that can read the private repository.")
-        }
-        Some(403 | 429) => {
+        Some(200) if response.status.success() => Ok(response.stdout),
+        Some(429) => {
             bail!(
-                "GitHub is limiting update checks. Try again later or open Releases in your browser."
+                "GitHub is temporarily limiting file downloads. Try again later or open Releases in your browser."
             )
         }
         Some(404) => {
-            bail!("GitHub could not find a release you can access. Open Releases in your browser.")
+            bail!("The public release file is missing. Open Releases in your browser.")
         }
         _ => bail!(
             "Can't reach the GitHub release. Check your connection or open Releases in your browser."
@@ -307,92 +247,17 @@ fn system_curl() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-fn github_token() -> Option<String> {
-    ["GH_TOKEN", "GITHUB_TOKEN"]
-        .into_iter()
-        .filter_map(|name| env::var(name).ok())
-        .find(|token| !token.trim().is_empty())
-        .or_else(cli_token)
-        .or_else(git_token)
-}
-
-fn executable(name: &str, program_path: &str) -> Option<PathBuf> {
-    env::split_paths(&env::var_os("PATH").unwrap_or_default())
-        .filter(|directory| directory.is_absolute())
-        .map(|directory| directory.join(name))
-        .chain(
-            env::var_os("ProgramFiles").map(|programs| PathBuf::from(programs).join(program_path)),
-        )
-        .find(|exe| exe.is_file())
-}
-
-fn cli_token() -> Option<String> {
-    let cli = executable("gh.exe", "GitHub CLI/gh.exe")?;
-    let output = Command::new(cli)
-        .args(["auth", "token", "--hostname", "github.com"])
-        .env("GH_PROMPT_DISABLED", "1")
-        .env_remove("GH_DEBUG")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let token = String::from_utf8(output.stdout).ok()?;
-    let token = token.trim();
-    (!token.is_empty()).then(|| token.to_owned())
-}
-
-fn git_token() -> Option<String> {
-    let git = executable("git.exe", "Git/cmd/git.exe")?;
-    let mut child = Command::new(git)
-        .args(["-c", "credential.interactive=false", "credential", "fill"])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GCM_INTERACTIVE", "Never")
-        .env_remove("GIT_TRACE")
-        .env_remove("GIT_TRACE_CURL")
-        .env_remove("GCM_TRACE")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .ok()?;
-    let input_ok = child
-        .stdin
-        .take()?
-        .write_all(b"protocol=https\nhost=github.com\n\n")
-        .is_ok();
-    let output = child.wait_with_output().ok()?;
-    if !input_ok || !output.status.success() {
-        return None;
-    }
-    let record = String::from_utf8(output.stdout).ok()?;
-    record.lines().find_map(|line| {
-        line.strip_prefix("password=")
-            .filter(|token| !token.is_empty())
-            .map(str::to_owned)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn release(tag: &str, prerelease: bool, digest: Option<&str>) -> Release {
-        Release {
-            tag_name: tag.into(),
-            draft: false,
-            prerelease,
-            assets: vec![Asset {
-                id: 1,
-                name: INSTALLER.into(),
-                size: 1,
-                digest: digest.map(str::to_owned),
-            }],
-        }
+    fn manifest(version: &str, size: u64, digest: &str) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "version": version,
+            "size": size,
+            "sha256": digest,
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -406,23 +271,34 @@ mod tests {
     }
 
     #[test]
-    fn checks_newer_stable_versions_and_requires_a_verified_installer() {
-        let digest = format!("sha256:{}", "ab".repeat(32));
-        let installed = Version::parse("0.4.3").unwrap();
-        let check = |tag, prerelease, digest| {
-            update_from_release(release(tag, prerelease, digest), &installed)
-        };
-        assert!(check("v0.4.3", false, None).unwrap().is_none());
-        assert!(check("v0.4.2", false, None).unwrap().is_none());
-        assert!(check("v0.4.4-beta.1", true, None).unwrap().is_none());
-        assert!(check("v0.4.4", false, None).is_err());
+    fn the_manifest_pins_the_installer_to_a_newer_stable_release() {
+        let digest = "ab".repeat(32);
+        let installed = Version::new(0, 4, 9);
+        let check = |version| update_from_manifest(&manifest(version, 42, &digest), &installed);
+        assert!(check("0.4.8").unwrap().is_none());
+        assert!(check("0.4.9").unwrap().is_none());
+        assert!(check("0.4.10-beta.1").unwrap().is_none());
+        let update = check("0.4.10").unwrap().unwrap();
+        assert_eq!(update.size, 42);
+        assert_eq!(update.sha256, digest);
         assert_eq!(
-            check("v0.4.10", false, Some(&digest))
-                .unwrap()
-                .unwrap()
-                .version
-                .to_string(),
-            "0.4.10"
+            installer_url("a-nahvi/meme-soundboard", &update.version),
+            "https://github.com/a-nahvi/meme-soundboard/releases/download/v0.4.10/MemeSoundboard-Setup-x64.exe"
         );
+    }
+
+    #[test]
+    fn rejects_invalid_update_information() {
+        let installed = Version::new(0, 4, 9);
+        let digest = "ab".repeat(32);
+        for bytes in [
+            b"<html>Not found</html>".to_vec(),
+            br#"{"version":"0.4.10"}"#.to_vec(),
+            manifest("latest/other-file", 42, &digest),
+            manifest("0.4.10", 0, &digest),
+            manifest("0.4.10", 42, &"gg".repeat(32)),
+        ] {
+            assert!(update_from_manifest(&bytes, &installed).is_err());
+        }
     }
 }
